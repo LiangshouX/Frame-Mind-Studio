@@ -26,4 +26,6 @@ replay_pid*
 # Frontend
 node_modules/
 package-lock.json
+.next/
+.idea/
 
