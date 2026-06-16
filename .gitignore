@@ -29,3 +29,6 @@ package-lock.json
 .next/
 .idea/
 
+# Vibe Coding
+.claude/
+.specify/
