@@ -32,6 +32,8 @@
 ## Notes
 
 - All items passed validation on first iteration
-- Spec is ready for `/speckit-clarify` or `/speckit-plan`
-- Assumptions section documents reasonable defaults for unclarified details
-- Edge cases section covers error scenarios, boundary conditions, and performance limits
+- Spec is ready for `/speckit-plan`
+- Clarification session (2026-06-16) resolved 5 high-impact ambiguities
+- Added: auth model (none for v1), AI progress UX, concurrent editing, script states, API cost control
+- New FRs: FR-011, FR-017, FR-029~032; new SCs: SC-011, SC-012; new entity: ProjectBudget
+- Future considerations documented for script state machine and user auth

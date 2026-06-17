@@ -8,6 +8,16 @@
 
 **Input**: 根据 @docs/Product-Design-Specification.md 文档中的 "PART III — ScriptMind 剧本工厂" 部分的需求内容，编写 Spec 规格
 
+## Clarifications
+
+### Session 2026-06-16
+
+- Q: What user access model should ScriptMind support? → A: No auth/authorization for initial version — single-user local deployment via Docker, configure AI settings and run locally.
+- Q: How should the system communicate progress during AI generation? → A: Stage-based progress with agent output streaming — show current agent stage (Showrunner/WorldBuilder/etc.) and stream its text output to the user.
+- Q: How should the system handle concurrent edits to the same script? → A: Last-write-wins with auto-save — each tab saves independently, version history provides recovery for accidental overwrites.
+- Q: Should scripts have explicit workflow states? → A: No formal states for initial version — script is always editable, user controls progression implicitly. Full workflow states (draft → in_review → approved → archived) documented as future consideration.
+- Q: How should the system handle LLM API rate limits and cost guardrails? → A: Per-project token budget with configurable warning threshold (warn at 80%, hard stop at 100%) + retry with exponential backoff on 429 rate limit errors.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — 一句话创意生成完整大纲 (Priority: P1)
@@ -24,6 +34,7 @@
 2. **Given** 系统生成大纲后进入人类审核节点，**When** 用户选择"批准"，**Then** 大纲定稿并保存，可用于后续分镜流程
 3. **Given** 系统生成大纲后进入人类审核节点，**When** 用户选择"要求修改"并提供反馈，**Then** 系统根据反馈重新生成修订版大纲
 4. **Given** 用户输入过于简短或模糊（如"写个故事"），**When** 系统尝试解析意图，**Then** 系统提示用户补充关键信息（题材、目标形态、大致集数）
+5. **Given** AI 生成过程正在进行，**When** 用户查看界面，**Then** 系统显示当前所处的 Agent 阶段（Showrunner/WorldBuilder/CharacterDesigner/ScriptDoctor）并实时流式输出该 Agent 的文本内容
 
 ---
 
@@ -91,6 +102,7 @@
 3. **Given** 用户在角色元素后按 Enter，**When** 新段落创建，**Then** 默认元素类型为 dialogue
 4. **Given** 用户在空内容元素上按 Backspace，**When** 元素被删除，**Then** 焦点自动移到上一个元素
 5. **Given** 编辑器中有多个场景标题，**When** 用户编辑内容导致场景顺序变化，**Then** 左侧边栏的场景编号自动更新
+6. **Given** 用户在浏览器 A 标签页中编辑剧本，**When** 同时在 B 标签页中打开同一剧本并编辑，**Then** 两个标签页各自独立保存，以最后保存的版本为准，用户可通过版本历史恢复
 
 ---
 
@@ -151,6 +163,9 @@
 - 剧本编辑器中用户连续快速按 Tab 切换元素类型，系统如何保证响应流畅？→ 前端即时切换，不依赖后端响应
 - 伏笔数量过多（超过 50 个），审校报告如何展示？→ 按重要性和集数分组展示，支持筛选和排序
 - 版本历史过多（超过 100 个版本），如何管理？→ 自动合并相近时间的微小变更，保留关键节点版本
+- LLM API 返回 429 速率限制错误，系统如何处理？→ 指数退避重试（最多 3 次），全部失败后提示用户稍后重试或切换模型
+- 项目 Token 用量达到警告阈值（80%），系统如何处理？→ 界面显示警告提示，建议用户优化输入或升级 API 配额
+- 项目 Token 用量达到硬上限（100%），系统如何处理？→ 暂停 AI 生成任务，提示用户调整预算或等待下一计费周期
 
 ## Requirements *(mandatory)*
 
@@ -171,41 +186,50 @@
 - **FR-008**: 系统 MUST 内置至少 6 种风格预设（甜宠、悬疑、逆袭、古风、漫威风、搞笑），用户可一键选择
 - **FR-009**: 系统 MUST 自动检测剧本中的平淡点、钩子缺失、爽感密度不足等节奏问题，并生成优化建议
 - **FR-010**: 系统 MUST 支持 AI 模型降级与回退，首选模型失败时自动切换备选模型
+- **FR-011**: 系统 MUST 在 AI 生成过程中显示当前 Agent 阶段标签（Showrunner/WorldBuilder/CharacterDesigner/ScriptDoctor）并实时流式输出该 Agent 的文本内容
 
 **剧本编辑器**
 
-- **FR-011**: 编辑器 MUST 支持六种元素类型：场景标题 (scene_heading)、动作 (action)、角色 (character)、对白 (dialogue)、括号说明 (parenthetical)、转场 (transition)
-- **FR-012**: 编辑器 MUST 支持 Tab 键循环切换元素类型，Shift+Tab 反向切换
-- **FR-013**: 编辑器 MUST 在对白后按 Enter 默认创建 action 元素，在角色后按 Enter 默认创建 dialogue 元素
-- **FR-014**: 编辑器 MUST 在空内容元素上按 Backspace 删除该元素并将焦点移到上一个元素
-- **FR-015**: 编辑器 MUST 在左侧边栏自动显示场景编号，随编辑自动更新
+- **FR-012**: 编辑器 MUST 支持六种元素类型：场景标题 (scene_heading)、动作 (action)、角色 (character)、对白 (dialogue)、括号说明 (parenthetical)、转场 (transition)
+- **FR-013**: 编辑器 MUST 支持 Tab 键循环切换元素类型，Shift+Tab 反向切换
+- **FR-014**: 编辑器 MUST 在对白后按 Enter 默认创建 action 元素，在角色后按 Enter 默认创建 dialogue 元素
+- **FR-015**: 编辑器 MUST 在空内容元素上按 Backspace 删除该元素并将焦点移到上一个元素
+- **FR-016**: 编辑器 MUST 在左侧边栏自动显示场景编号，随编辑自动更新
+- **FR-017**: 编辑器 MUST 支持多标签页独立编辑同一剧本，采用最后写入保存策略，版本历史提供恢复能力
 
 **多集管理与伏笔**
 
-- **FR-016**: 系统 MUST 支持 8-100 集的短剧项目，每集时长 1-3 分钟
-- **FR-017**: 系统 MUST 支持用户拖拽调整集数顺序，支持合并/拆分集
-- **FR-018**: 系统 MUST 自动追踪伏笔的生命周期（埋设集数、是否回收、回收集数、关联角色）
-- **FR-019**: ScriptDoctor Agent 在审校时 MUST 检查所有已埋伏笔的回收状态，对未回收伏笔生成提醒
+- **FR-018**: 系统 MUST 支持 8-100 集的短剧项目，每集时长 1-3 分钟
+- **FR-019**: 系统 MUST 支持用户拖拽调整集数顺序，支持合并/拆分集
+- **FR-020**: 系统 MUST 自动追踪伏笔的生命周期（埋设集数、是否回收、回收集数、关联角色）
+- **FR-021**: ScriptDoctor Agent 在审校时 MUST 检查所有已埋伏笔的回收状态，对未回收伏笔生成提醒
 
 **版本控制**
 
-- **FR-020**: 系统 MUST 在每次 AI 修改或手动编辑后自动创建版本快照
-- **FR-021**: 系统 MUST 支持任意版本回溯，回溯时保留当前版本为新快照
-- **FR-022**: 系统 MUST 支持两个版本的 diff 对比视图，高亮展示增删改差异
+- **FR-022**: 系统 MUST 在每次 AI 修改或手动编辑后自动创建版本快照
+- **FR-023**: 系统 MUST 支持任意版本回溯，回溯时保留当前版本为新快照
+- **FR-024**: 系统 MUST 支持两个版本的 diff 对比视图，高亮展示增删改差异
 
 **质量评估**
 
-- **FR-023**: 系统 MUST 自动计算剧本质量指标：钩子强度（目标 100%）、节奏曲线（标准差 > 0.3）、角色出场均衡（40%-60%）、对白占比（30%-50%）、场景多样性（> 0.6）
-- **FR-024**: 系统 MUST 在剧本编辑界面展示质量评估仪表盘，实时更新指标
+- **FR-025**: 系统 MUST 自动计算剧本质量指标：钩子强度（目标 100%）、节奏曲线（标准差 > 0.3）、角色出场均衡（40%-60%）、对白占比（30%-50%）、场景多样性（> 0.6）
+- **FR-026**: 系统 MUST 在剧本编辑界面展示质量评估仪表盘，实时更新指标
 
 **数据输出**
 
-- **FR-025**: 系统 MUST 将剧本输出为标准化 JSON 格式，包含完整的 ScriptContent 结构（title、totalEpisodes、episodes → scenes → beats）
-- **FR-026**: 系统 MUST 为每个 beat 生成镜头建议 (cameraSuggestion)，为后续分镜模块提供输入
+- **FR-027**: 系统 MUST 将剧本输出为标准化 JSON 格式，包含完整的 ScriptContent 结构（title、totalEpisodes、episodes → scenes → beats）
+- **FR-028**: 系统 MUST 为每个 beat 生成镜头建议 (cameraSuggestion)，为后续分镜模块提供输入
+
+**API 成本控制**
+
+- **FR-029**: 系统 MUST 支持按项目配置 Token 预算，提供可配置的警告阈值（默认 80%）和硬上限（默认 100%）
+- **FR-030**: 系统 MUST 在 Token 用量达到警告阈值时在界面显示警告提示
+- **FR-031**: 系统 MUST 在 Token 用量达到硬上限时暂停 AI 生成任务并提示用户
+- **FR-032**: 系统 MUST 在 LLM API 返回 429 速率限制错误时进行指数退避重试（最多 3 次）
 
 ### Key Entities
 
-- **Script (剧本)**: 一个完整的剧本项目，包含标题、总集数、所有集的内容。关键属性：title、totalEpisodes、version
+- **Script (剧本)**: 一个完整的剧本项目，包含标题、总集数、所有集的内容。关键属性：title、totalEpisodes、version。初始版本无正式状态机，用户通过继续下一 Pipeline 阶段隐式控制进度。
 - **ScriptEpisode (剧集)**: 剧本中的单集，包含该集的所有场景。关键属性：episodeNumber、title、durationMinutes
 - **ScriptScene (场景)**: 单集中的一个场景，包含地点、时间、情绪标签、在场角色和所有节拍。关键属性：sceneId、location、time、moodTags
 - **ScriptBeat (节拍)**: 场景中的最小叙事单元，可以是动作、对白、情绪或转场。关键属性：beatId、type、content、character、emotion、cameraSuggestion、durationSeconds
@@ -213,6 +237,14 @@
 - **Foreshadow (伏笔)**: 剧本中埋设的伏笔记录，追踪其生命周期。关键属性：foreshadow_id、content、planted_episode、resolved、resolved_episode、related_characters
 - **StoryOutline (故事大纲)**: AI 生成的结构化大纲，包含标题、题材、梗概、集数规划、主线和反转点
 - **ScriptVersion (版本快照)**: 剧本的版本历史记录，支持回溯和对比
+- **ProjectBudget (项目预算)**: 每个项目的 Token 用量预算和消耗记录。关键属性：token_limit、tokens_used、warning_threshold
+
+### Future Considerations
+
+以下设计决策在初始版本中采用简化方案，未来迭代时可参考完整方案：
+
+- **脚本状态机 (Script State Machine)**: 初始版本不设正式状态。未来多用户协作时可引入 `draft → in_review → approved → archived` 状态机，配合状态转换守卫和通知机制。
+- **用户认证与授权 (Auth & Authorization)**: 初始版本为单用户本地部署，无需认证。未来如需支持多用户，可引入基于角色的访问控制（owner/editor/viewer）。
 
 ## Success Criteria *(mandatory)*
 
@@ -228,6 +260,8 @@
 - **SC-008**: 风格预设覆盖 6 种以上主流短剧题材，用户满意度达到 80% 以上
 - **SC-009**: AI 辅助优化建议提供 2-3 种改写方案，用户接受率达到 60% 以上
 - **SC-010**: 系统支持同时处理 10 个以上并发剧本生成请求，无明显性能下降
+- **SC-011**: AI 生成过程中，用户可实时看到当前 Agent 阶段和流式输出内容，无需等待全部完成
+- **SC-012**: LLM API 429 错误的自动重试成功率达到 80% 以上（在 API 服务恢复正常后）
 
 ## Assumptions
 
@@ -241,3 +275,5 @@
 - 风格预设的"漫威风"和"搞笑"等预设为初始版本，后续可通过社区贡献扩展
 - 剧本输出的 JSON 格式为下游模块（StoryboardAI、StyleForge）的标准输入，格式变更需协调
 - 本 Spec 覆盖 ScriptMind 剧本工厂模块，不包含 StoryboardAI、StyleForge、MotionCore、VoiceStage、SoundGen 和 Export 模块的功能
+- 初始版本为单用户本地部署（Docker），无用户认证、角色或授权机制
+- Token 预算的默认值和阈值为建议值，用户可根据自身 API 配额自行调整
