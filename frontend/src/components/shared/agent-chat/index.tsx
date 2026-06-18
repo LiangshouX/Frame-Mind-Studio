@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useMemo } from 'react'
 import { MessageList } from './message-list'
 import { InputBar } from './input-bar'
 import { StageIndicator } from './stage-indicator'
@@ -16,14 +17,25 @@ interface AgentChatProps {
 
 export function AgentChat({ projectId, onSend, onApprove, onRevise }: AgentChatProps) {
   const { messages, isRunning, isReviewing, reviewContent, stage, budgetWarning, tokensConsumed, connectionStatus } = useAgentStore()
+  const [activeFilter, setActiveFilter] = useState<string | null>(null)
+
+  const filteredMessages = useMemo(() => {
+    if (!activeFilter) return messages
+    return messages.filter((msg) => msg.agentName === activeFilter || msg.role === 'user' || msg.role === 'system')
+  }, [messages, activeFilter])
 
   return (
-    <div className="flex flex-col h-full border border-[var(--border)] rounded-xl bg-[var(--bg-card)] overflow-hidden shadow-soft">
-      <div className="px-5 py-4 border-b border-[var(--border)]">
-        <StageIndicator currentStage={stage} isRunning={isRunning} />
+    <div className="flex flex-col h-full bg-[var(--bg-card)] overflow-hidden">
+      <div className="px-5 py-3 border-b border-[var(--border-light)]">
+        <StageIndicator
+          currentStage={stage}
+          isRunning={isRunning}
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+        />
       </div>
 
-      <MessageList messages={messages} />
+      <MessageList messages={filteredMessages} />
       {budgetWarning && <BudgetWarning message={budgetWarning} />}
 
       {isReviewing && reviewContent ? (
@@ -32,9 +44,9 @@ export function AgentChat({ projectId, onSend, onApprove, onRevise }: AgentChatP
         <InputBar onSend={onSend} disabled={isRunning} />
       )}
 
-      <div className="px-5 py-3 border-t border-[var(--border)] flex items-center justify-between text-sm text-[var(--text-muted)]">
+      <div className="px-5 py-2.5 border-t border-[var(--border-light)] flex items-center justify-between text-xs text-[var(--text-muted)]">
         <span className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${
+          <span className={`w-1.5 h-1.5 rounded-full ${
             connectionStatus === 'connected' ? 'bg-[var(--accent)]' :
             connectionStatus === 'connecting' ? 'bg-[var(--gold)] animate-pulse' :
             'bg-[var(--text-muted)]'

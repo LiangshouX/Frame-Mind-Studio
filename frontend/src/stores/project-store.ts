@@ -12,6 +12,7 @@ interface ProjectStore {
   createProject: (params: { title: string; genre: string[]; format: string; description?: string }) => Promise<Project>
   deleteProject: (id: string) => Promise<void>
   clearCurrent: () => void
+  updateCurrentScript: (script: ProjectDetail['script']) => void
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -63,4 +64,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   clearCurrent: () => set({ currentProject: null }),
+
+  updateCurrentScript: (script) => {
+    const current = get().currentProject
+    if (!current) return
+    set({ currentProject: { ...current, script } })
+  },
 }))

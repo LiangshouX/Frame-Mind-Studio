@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { Navbar } from '@/components/layout/navbar'
-import { PipelineNav } from '@/components/shared/pipeline-nav'
+import { ProjectSidebar } from '@/components/shared/project-sidebar'
 import { useProjectStore } from '@/stores/project-store'
 
 export default function ProjectLayout({ children }: { children: React.ReactNode }) {
@@ -18,16 +18,18 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   return (
     <>
       <Navbar />
-      <main className="pt-14">
-        <div className="border-b border-[var(--border-light)] bg-[var(--bg-card)]">
-          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-8">
-            <h2 className="font-display text-lg font-bold truncate max-w-[240px]">
+      <main className="pt-14 flex h-[calc(100vh-3.5rem)]">
+        <div className="flex flex-col w-52 flex-shrink-0 border-r border-[var(--border-light)] bg-[var(--bg-card)]">
+          <div className="px-4 py-4 border-b border-[var(--border-light)]">
+            <h2 className="font-display text-sm font-bold truncate text-[var(--text-primary)]">
               {currentProject?.title || '...'}
             </h2>
-            <PipelineNav projectId={projectId} />
           </div>
+          <ProjectSidebar projectId={projectId} />
         </div>
-        {children}
+        <div className="flex-1 overflow-hidden">
+          {children}
+        </div>
       </main>
     </>
   )

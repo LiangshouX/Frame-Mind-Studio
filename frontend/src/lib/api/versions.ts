@@ -13,12 +13,12 @@ export async function listVersions(
   )
 }
 
-export async function getVersion(projectId: string, versionId: string): Promise<ScriptVersion> {
-  return apiFetch<ScriptVersion>(`/projects/${projectId}/script/versions/${versionId}`)
+export async function getVersion(projectId: string, versionNumber: number): Promise<ScriptVersion> {
+  return apiFetch<ScriptVersion>(`/projects/${projectId}/script/versions/${versionNumber}`)
 }
 
-export async function restoreVersion(projectId: string, versionId: string): Promise<Script> {
-  return apiFetch<Script>(`/projects/${projectId}/script/versions/${versionId}/restore`, {
+export async function restoreVersion(projectId: string, versionNumber: number): Promise<Script> {
+  return apiFetch<Script>(`/projects/${projectId}/script/versions/${versionNumber}/restore`, {
     method: 'POST',
   })
 }
