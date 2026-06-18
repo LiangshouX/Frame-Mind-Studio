@@ -1,109 +1,48 @@
 'use client'
-import { useRef, useEffect } from 'react'
-import { cn } from '@/lib/utils'
-import { AGENT_LABELS } from '@/../../shared/constants/pipeline'
 
-interface AgentMessage {
-  agentName: string
-  role: 'agent' | 'user' | 'system'
-  content: string
-}
+import { MessageList } from './message-list'
+import { InputBar } from './input-bar'
+import { StageIndicator } from './stage-indicator'
+import { ReviewPanel } from './review-panel'
+import { BudgetWarning } from './budget-warning'
+import { useAgentStore } from '@/stores/agent-store'
 
 interface AgentChatProps {
-  messages: AgentMessage[]
-  isRunning: boolean
-  currentStage: string | null
-  stageLabel: string | null
-  hitlPending: boolean
-  hitlOptions: string[]
-  onReview?: (action: 'approve' | 'revise', feedback?: string) => void
+  projectId: string
+  onSend: (text: string, stylePreset?: string) => void
+  onApprove: () => void
+  onRevise: (feedback: string) => void
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  showrunner: 'var(--agent-showrunner)',
-  world_builder: 'var(--agent-worldbuilder)',
-  character_designer: 'var(--agent-character)',
-  script_doctor: 'var(--agent-scriptdoctor)',
-  human_review: 'var(--accent)',
-  system: 'var(--text-muted)',
-}
-
-export function AgentChat({
-  messages,
-  isRunning,
-  currentStage,
-  stageLabel,
-  hitlPending,
-  hitlOptions,
-  onReview,
-}: AgentChatProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages])
+export function AgentChat({ projectId, onSend, onApprove, onRevise }: AgentChatProps) {
+  const { messages, isRunning, isReviewing, reviewContent, stage, budgetWarning, tokensConsumed, connectionStatus } = useAgentStore()
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-card)] border-l border-[var(--border-light)]">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-light)]">
-        <div className="flex items-center gap-2">
-          <div className={cn('w-2 h-2 rounded-full', isRunning ? 'bg-green-500 animate-pulse' : 'bg-[var(--border)]')} />
-          <span className="text-sm font-medium text-[var(--text-primary)]">
-            {stageLabel || 'Agent 面板'}
-          </span>
-        </div>
-        {currentStage && (
-          <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: `${AGENT_COLORS[currentStage]}15`, color: AGENT_COLORS[currentStage] }}>
-            {AGENT_LABELS[currentStage] || currentStage}
-          </span>
-        )}
+    <div className="flex flex-col h-full border border-[var(--border)] rounded-xl bg-[var(--bg-card)] overflow-hidden shadow-soft">
+      <div className="px-5 py-4 border-b border-[var(--border)]">
+        <StageIndicator currentStage={stage} isRunning={isRunning} />
       </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
-        {messages.length === 0 && (
-          <div className="text-center text-[var(--text-muted)] text-sm py-12">
-            输入创意，开始 AI 协作
-          </div>
-        )}
-        {messages.map((msg, i) => (
-          <div key={i} className="flex gap-2">
-            <div className="w-1 rounded-full flex-shrink-0" style={{ backgroundColor: AGENT_COLORS[msg.agentName] || 'var(--border)' }} />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-[var(--text-muted)] mb-0.5">
-                {AGENT_LABELS[msg.agentName] || msg.agentName}
-              </div>
-              <div className="text-sm text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
-                {msg.content}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <MessageList messages={messages} />
+      {budgetWarning && <BudgetWarning message={budgetWarning} />}
 
-      {/* HITL Review Panel */}
-      {hitlPending && onReview && (
-        <div className="border-t border-[var(--border-light)] p-4 bg-[var(--accent-light)]">
-          <div className="text-sm font-medium text-[var(--accent)] mb-2">等待审核</div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onReview('approve')}
-              className="flex-1 px-3 py-2 text-sm bg-[var(--accent)] text-white rounded hover:bg-[var(--accent-hover)] transition-colors"
-            >
-              批准
-            </button>
-            <button
-              onClick={() => onReview('revise')}
-              className="flex-1 px-3 py-2 text-sm border border-[var(--border)] text-[var(--text-secondary)] rounded hover:border-[var(--text-primary)] transition-colors"
-            >
-              修改
-            </button>
-          </div>
-        </div>
+      {isReviewing && reviewContent ? (
+        <ReviewPanel content={reviewContent} onApprove={onApprove} onRevise={onRevise} />
+      ) : (
+        <InputBar onSend={onSend} disabled={isRunning} />
       )}
+
+      <div className="px-5 py-3 border-t border-[var(--border)] flex items-center justify-between text-sm text-[var(--text-muted)]">
+        <span className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${
+            connectionStatus === 'connected' ? 'bg-[var(--accent)]' :
+            connectionStatus === 'connecting' ? 'bg-[var(--gold)] animate-pulse' :
+            'bg-[var(--text-muted)]'
+          }`} />
+          {connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '连接中...' : '未连接'}
+        </span>
+        <span>Token: {tokensConsumed.toLocaleString()}</span>
+      </div>
     </div>
   )
 }

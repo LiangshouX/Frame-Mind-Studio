@@ -1,13 +1,28 @@
-export type BeatType = 'action' | 'dialogue' | 'emotion' | 'transition'
+export interface Script {
+  id: string
+  project_id: string
+  title: string
+  content: ScriptContent
+  format_type: string
+  word_count: number
+  scene_count: number
+  episode_count: number
+  version: number
+  created_at: string
+  updated_at: string
+}
 
-export interface ScriptBeat {
-  beatId: string
-  type: BeatType
-  content: string
-  character?: string
-  emotion?: string
-  cameraSuggestion?: string
-  durationSeconds?: number
+export interface ScriptContent {
+  title: string
+  totalEpisodes: number
+  episodes: ScriptEpisode[]
+}
+
+export interface ScriptEpisode {
+  episodeNumber: number
+  title: string
+  durationMinutes: number
+  scenes: ScriptScene[]
 }
 
 export interface ScriptScene {
@@ -19,27 +34,27 @@ export interface ScriptScene {
   beats: ScriptBeat[]
 }
 
-export interface ScriptEpisode {
+export interface ScriptBeat {
+  beatId: string
+  type: 'action' | 'dialogue' | 'emotion' | 'transition'
+  content: string
+  character: string | null
+  emotion: string | null
+  cameraSuggestion: string | null
+  durationSeconds: number | null
+}
+
+export type ElementType =
+  | 'scene_heading'
+  | 'action'
+  | 'character'
+  | 'dialogue'
+  | 'parenthetical'
+  | 'transition'
+
+export interface SceneNavItem {
+  sceneId: string
+  sceneNumber: number
+  location: string
   episodeNumber: number
-  title: string
-  durationMinutes: number
-  summary?: string
-  keyEvents: string[]
-  cliffhanger?: string
-  scenes: ScriptScene[]
-}
-
-export interface ScriptContent {
-  title: string
-  totalEpisodes: number
-  episodes: ScriptEpisode[]
-}
-
-export interface QualityMetrics {
-  hookStrength: { value: number; target: number; status: string; details: string }
-  rhythmCurve: { value: number; target: number; status: string; details: string }
-  characterBalance: { value: number; targetRange: [number, number]; status: string; details: string }
-  dialogueRatio: { value: number; targetRange: [number, number]; status: string; details: string }
-  sceneDiversity: { value: number; target: number; status: string; details: string }
-  overallScore: number
 }

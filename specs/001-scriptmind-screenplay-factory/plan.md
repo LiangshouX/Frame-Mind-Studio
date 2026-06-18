@@ -8,17 +8,17 @@
 
 ScriptMind 剧本工厂是灵镜创影的创作起点模块，负责将用户的创意想法（一句话梗概、大纲文本、小说文件、网页 URL）通过多 Agent 协作转化为结构化的标准剧本。核心能力包括：AI Agent 协作生成大纲（Showrunner → WorldBuilder → CharacterDesigner → ScriptDoctor）、专业剧本编辑器（6 种元素类型 + Tab 切换）、多集管理与伏笔追踪、版本控制与历史回溯、质量评估仪表盘、API 成本控制。
 
-技术方案采用前后端分离架构：前端 Next.js 14 + shadcn/ui + Tailwind CSS，后端 FastAPI + LangChain/LangGraph Agent 编排，存储层 PostgreSQL（业务数据）+ ChromaDB（向量记忆），通过 Docker Compose 一键部署。初始版本为单用户本地部署，无认证机制。
+技术方案采用前后端分离架构：前端 Next.js 14 + shadcn/ui + Tailwind CSS，后端 Spring Boot 3.x + AgentScope-Java（ReAct Agent 编排），存储层 PostgreSQL（业务数据）+ Redis（缓存/会话），通过 Docker Compose 一键部署。初始版本为单用户本地部署，无认证机制。
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+ (backend), TypeScript 5.3+ (frontend)
+**Language/Version**: Java 17+ (backend), TypeScript 5.3+ (frontend)
 
-**Primary Dependencies**: FastAPI 0.110+, SQLAlchemy 2.0+, LangChain/LangGraph (DeepAgents), Next.js 14+, shadcn/ui, Tailwind CSS 3.4+, Zustand
+**Primary Dependencies**: Spring Boot 3.x, AgentScope-Java 1.0.12 (io.agentscope:agentscope), Spring Data JPA, Spring WebSocket, Next.js 14+, shadcn/ui, Tailwind CSS 3.4+, Zustand
 
-**Storage**: PostgreSQL 16+ (业务数据), ChromaDB (向量记忆/项目记忆), Redis 7+ (会话缓存/任务队列), MinIO (资产文件存储)
+**Storage**: PostgreSQL 16+ (业务数据), Redis 7+ (会话缓存/任务队列)
 
-**Testing**: pytest (backend), Jest + React Testing Library (frontend)
+**Testing**: JUnit 5 + Mockito (backend), Jest + React Testing Library (frontend)
 
 **Target Platform**: Docker Compose (本地部署), Linux containers
 
@@ -56,7 +56,7 @@ specs/001-scriptmind-screenplay-factory/
 采用**领域驱动的模块化架构**，每个 Pipeline 阶段（ScriptMind、StoryboardAI、StyleForge 等）为独立模块，共享基础设施层。当前仅实现 ScriptMind 模块，其余模块以占位目录预留。
 
 ```text
-frontend/                                  # Next.js 14 App Router
+frontend/                                  # Next.js 14 App Router（保持不变）
 ├── src/
 │   ├── app/
 │   │   ├── layout.tsx                     # 全局布局
@@ -119,126 +119,108 @@ frontend/                                  # Next.js 14 App Router
 ├── tsconfig.json
 └── Dockerfile
 
-backend/                                   # FastAPI 后端
-├── app/
-│   ├── main.py                            # FastAPI 入口，挂载所有模块路由
+backend/                                   # Spring Boot 后端
+├── pom.xml                                # Maven 构建文件
+├── src/main/java/io/framemind/
+│   ├── FrameMindApplication.java          # Spring Boot 入口
 │   ├── core/                              # 基础设施层（所有模块共享）
-│   │   ├── config.py                      # 全局配置管理
-│   │   ├── database.py                    # 数据库连接池
-│   │   ├── security.py                    # API Key 加密存储
-│   │   ├── ai_gateway/                    # AI 模型网关（共享）
-│   │   │   ├── __init__.py
-│   │   │   ├── catalog.py                 # 模型目录与路由
-│   │   │   ├── provider.py                # LLM Provider 抽象
-│   │   │   └── budget.py                  # Token 预算中间件
-│   │   ├── agent/                         # Agent 框架层（共享）
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py                    # Agent 基类
-│   │   │   ├── orchestrator.py            # Agent 编排器（StateGraph）
-│   │   │   ├── memory/                    # 记忆系统
-│   │   │   │   ├── chroma_store.py        # ChromaDB 项目记忆
-│   │   │   │   └── working_memory.py      # 工作记忆
-│   │   │   └── tools/                     # Agent 工具（共享）
-│   │   │       ├── web_search.py          # 联网搜索
-│   │   │       └── format_converter.py    # 格式转换
-│   │   ├── models/                        # 共享数据库模型
-│   │   │   ├── __init__.py
-│   │   │   ├── project.py                 # Project 模型
-│   │   │   └── agent_session.py           # AgentSession / AgentMessage
-│   │   ├── schemas/                       # 共享 Pydantic schemas
-│   │   │   ├── __init__.py
-│   │   │   ├── project.py
-│   │   │   └── agent.py
-│   │   └── api/                           # 共享 API 路由
-│   │       ├── __init__.py
-│   │       ├── v1/
-│   │       │   ├── __init__.py
-│   │       │   ├── projects.py            # 项目 CRUD
-│   │       │   ├── settings.py            # 配置管理
-│   │       │   └── router.py              # 汇总路由注册
-│   │       └── websocket.py               # WebSocket 端点
+│   │   ├── config/                        # 全局配置
+│   │   │   ├── DatabaseConfig.java        # 数据库配置
+│   │   │   ├── RedisConfig.java           # Redis 配置
+│   │   │   ├── WebSocketConfig.java       # WebSocket 配置
+│   │   │   └── SecurityConfig.java        # API Key 加密配置
+│   │   ├── model/                         # 共享 JPA 实体
+│   │   │   ├── Project.java
+│   │   │   ├── ProjectBudget.java
+│   │   │   ├── AgentSession.java
+│   │   │   └── AgentMessage.java
+│   │   ├── repository/                    # 共享 Repository
+│   │   │   ├── ProjectRepository.java
+│   │   │   ├── AgentSessionRepository.java
+│   │   │   └── AgentMessageRepository.java
+│   │   ├── service/                       # 共享服务
+│   │   │   ├── ProjectService.java
+│   │   │   └── ApiKeyService.java         # Fernet 加密 API Key
+│   │   ├── controller/                    # 共享 REST 控制器
+│   │   │   ├── ProjectController.java
+│   │   │   └── SettingsController.java
+│   │   ├── dto/                           # 共享 DTO
+│   │   │   ├── ProjectCreateRequest.java
+│   │   │   ├── ProjectResponse.java
+│   │   │   └── ProjectListResponse.java
+│   │   └── websocket/                     # WebSocket 端点
+│   │       └── AgentWebSocketHandler.java
 │   │
-│   └── modules/                           # 领域模块（每个 Pipeline 阶段一个）
-│       ├── __init__.py
+│   ├── agent/                             # Agent 编排层（共享）
+│   │   ├── config/                        # Agent 配置
+│   │   │   └── AgentScopeConfig.java      # AgentScope-Java 配置
+│   │   ├── orchestration/                 # 多 Agent 编排
+│   │   │   ├── PipelineOrchestrator.java  # 流水线编排器
+│   │   │   └── StageResult.java           # 阶段结果
+│   │   ├── hook/                          # Hook 实现
+│   │   │   ├── StreamingHook.java         # 流式输出 Hook
+│   │   │   ├── BudgetHook.java            # Token 预算 Hook
+│   │   │   └── HitlHook.java              # 人类审核 Hook
+│   │   └── tool/                          # Agent 工具
+│   │       ├── ScriptQueryTool.java       # 剧本查询工具
+│   │       └── ForeshadowCheckTool.java   # 伏笔检查工具
+│   │
+│   └── modules/                           # 领域模块
 │       ├── scriptmind/                    # ===== ScriptMind 剧本工厂 =====
-│       │   ├── __init__.py
-│       │   ├── router.py                  # 模块路由注册
-│       │   ├── models/                    # 模块数据模型
-│       │   │   ├── __init__.py
-│       │   │   ├── script.py              # Script / ScriptEpisode / ScriptScene / ScriptBeat
-│       │   │   ├── character.py           # Character
-│       │   │   ├── foreshadow.py          # Foreshadow
-│       │   │   └── version.py             # ScriptVersion
-│       │   ├── schemas/                   # 模块 Pydantic schemas
-│       │   │   ├── __init__.py
-│       │   │   ├── script.py
-│       │   │   ├── character.py
-│       │   │   └── foreshadow.py
-│       │   ├── services/                  # 模块业务逻辑
-│       │   │   ├── __init__.py
-│       │   │   ├── script_service.py      # 剧本 CRUD + 版本控制
-│       │   │   ├── import_service.py      # 文件/URL 导入
-│       │   │   ├── quality_service.py     # 质量评估
-│       │   │   └── foreshadow_service.py  # 伏笔追踪
-│       │   ├── agents/                    # 模块专属 Agent
-│       │   │   ├── __init__.py
-│       │   │   ├── showrunner.py          # Showrunner Agent
-│       │   │   ├── world_builder.py       # WorldBuilder Agent
-│       │   │   ├── character_designer.py  # CharacterDesigner Agent
-│       │   │   └── script_doctor.py       # ScriptDoctor Agent
-│       │   ├── tools/                     # 模块专属工具
-│       │   │   ├── __init__.py
-│       │   │   └── logic_checker.py       # 逻辑校验
-│       │   └── api/                       # 模块 API 端点
-│       │       ├── __init__.py
-│       │       ├── scripts.py             # 剧本 CRUD
-│       │       ├── agent.py               # Agent 任务
-│       │       ├── characters.py          # 角色管理
-│       │       ├── foreshadows.py         # 伏笔管理
-│       │       └── quality.py             # 质量评估
+│       │   ├── model/                     # JPA 实体
+│       │   │   ├── Script.java
+│       │   │   ├── ScriptVersion.java
+│       │   │   ├── Character.java
+│       │   │   └── Foreshadow.java
+│       │   ├── repository/                # Spring Data Repository
+│       │   │   ├── ScriptRepository.java
+│       │   │   ├── ScriptVersionRepository.java
+│       │   │   ├── CharacterRepository.java
+│       │   │   └── ForeshadowRepository.java
+│       │   ├── service/                   # 业务逻辑
+│       │   │   ├── ScriptService.java     # 剧本 CRUD + 版本控制
+│       │   │   ├── ImportService.java     # 文件/URL 导入
+│       │   │   ├── QualityService.java    # 质量评估
+│       │   │   └── ForeshadowService.java # 伏笔追踪
+│       │   ├── agent/                     # 模块专属 Agent 定义
+│       │   │   ├── ShowrunnerAgent.java   # Showrunner Agent
+│       │   │   ├── WorldBuilderAgent.java # WorldBuilder Agent
+│       │   │   ├── CharacterDesignerAgent.java
+│       │   │   └── ScriptDoctorAgent.java
+│       │   ├── controller/                # REST 控制器
+│       │   │   ├── ScriptController.java
+│       │   │   ├── AgentController.java
+│       │   │   ├── CharacterController.java
+│       │   │   ├── ForeshadowController.java
+│       │   │   └── QualityController.java
+│       │   └── dto/                       # 模块 DTO
+│       │       ├── ScriptResponse.java
+│       │       ├── GenerateOutlineRequest.java
+│       │       └── OptimizeSegmentRequest.java
 │       │
-│       ├── storyboard/                    # [预留] StoryboardAI 智能分镜
-│       │   └── __init__.py
-│       ├── styleforge/                    # [预留] StyleForge 形象工坊
-│       │   └── __init__.py
-│       ├── motioncore/                    # [预留] MotionCore 视频合成
-│       │   └── __init__.py
-│       ├── voicestage/                    # [预留] VoiceStage 声演剧场
-│       │   └── __init__.py
-│       └── export/                        # [预留] Export 导出
-│           └── __init__.py
+│       ├── storyboard/                    # [预留] StoryboardAI
+│       ├── styleforge/                    # [预留] StyleForge
+│       ├── motioncore/                    # [预留] MotionCore
+│       ├── voicestage/                    # [预留] VoiceStage
+│       └── export/                        # [预留] Export
 │
-├── alembic/                               # 数据库迁移
-│   ├── env.py
-│   └── versions/
-├── tests/
-│   ├── conftest.py                        # 共享 fixtures
-│   ├── unit/
-│   │   ├── core/                          # 基础设施单元测试
-│   │   └── modules/
-│   │       └── scriptmind/                # ScriptMind 模块单元测试
-│   ├── integration/
-│   │   └── modules/
-│   │       └── scriptmind/
-│   └── contract/
-│       └── api/
-│           └── v1/
-├── pyproject.toml
+├── src/main/resources/
+│   ├── application.yml                    # Spring Boot 配置
+│   ├── application-dev.yml                # 开发环境配置
+│   └── db/migration/                      # Flyway 数据库迁移
+│       └── V1__init_schema.sql
+│
+├── src/test/java/io/framemind/            # 测试
+│   ├── core/
+│   └── modules/scriptmind/
+│
 ├── Dockerfile
 └── docker-compose.yml                     # 完整服务编排
-
-shared/                                    # 前后端共享类型定义
-├── types/
-│   ├── project.ts                         # 项目共享类型
-│   ├── script.ts                          # 剧本共享类型
-│   └── agent.ts                           # Agent 共享类型
-└── constants/
-    └── pipeline.ts                        # Pipeline 阶段常量
 ```
 
 **Structure Decision**: 采用**领域驱动的模块化架构**（Domain-Driven Modular Architecture）。
 
-- **`core/`**：基础设施层，包含数据库、AI 网关、Agent 框架、共享模型等所有模块共用的组件。新增模块时直接复用，无需重复实现。
-- **`modules/`**：领域层，每个 Pipeline 阶段为独立模块，内部包含自己的 models、schemas、services、agents、tools、api。模块间通过 `core/` 共享基础设施，模块内高内聚、模块间低耦合。
-- **前端 `components/shared/` 与 `components/scriptmind/`**：共享组件（Agent 面板、版本历史、质量仪表盘）可被未来模块复用，ScriptMind 专属组件独立组织。
+- **`core/`**：基础设施层，包含数据库、Agent 编排、WebSocket、共享模型等所有模块共用的组件。新增模块时直接复用，无需重复实现。
+- **`modules/`**：领域层，每个 Pipeline 阶段为独立模块，内部包含自己的 model、repository、service、agent、controller、dto。模块间通过 `core/` 共享基础设施，模块内高内聚、模块间低耦合。
+- **AgentScope-Java 集成**：每个 Agent 封装为 `ReActAgent` 实例，通过 `SubAgentTool` 实现 Supervisor → SubAgent 委托。`PipelineOrchestrator` 编排 Showrunner → WorldBuilder → CharacterDesigner → ScriptDoctor 流水线。
 - **扩展性**：新增 StoryboardAI 时，只需在 `modules/storyboard/` 下实现，并在前端 `app/projects/[projectId]/storyboard/` 添加页面，无需改动现有代码。

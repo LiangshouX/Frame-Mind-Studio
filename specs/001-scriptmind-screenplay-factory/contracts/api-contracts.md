@@ -2,6 +2,7 @@
 
 **Date**: 2026-06-16
 **Feature**: ScriptMind 剧本工厂
+**Updated**: 2026-06-18 — 后端从 FastAPI 迁移至 Spring Boot
 
 ## Base URL
 
@@ -45,6 +46,8 @@ ws://localhost:8080/ws/agent/{session_id}
   "genre": ["都市", "复仇", "逆袭"],
   "format": "short_drama",
   "description": "一个现代都市复仇短剧",
+  "status": "draft",
+  "target_episodes": 20,
   "created_at": "2026-06-16T10:00:00Z",
   "updated_at": "2026-06-16T10:00:00Z"
 }
@@ -63,6 +66,8 @@ ws://localhost:8080/ws/agent/{session_id}
       "title": "逆袭女王",
       "genre": ["都市", "复仇"],
       "format": "short_drama",
+      "status": "in_progress",
+      "target_episodes": 20,
       "created_at": "2026-06-16T10:00:00Z",
       "updated_at": "2026-06-16T10:00:00Z"
     }
@@ -83,6 +88,8 @@ ws://localhost:8080/ws/agent/{session_id}
   "genre": ["都市", "复仇", "逆袭"],
   "format": "short_drama",
   "description": "一个现代都市复仇短剧",
+  "status": "in_progress",
+  "target_episodes": 20,
   "script": { ... },
   "characters": [ ... ],
   "foreshadows": [ ... ],
@@ -116,10 +123,12 @@ ws://localhost:8080/ws/agent/{session_id}
   "id": "uuid",
   "project_id": "uuid",
   "title": "逆袭女王",
-  "total_episodes": 20,
-  "style_preset": "revenge",
   "content": { ... },
-  "current_version": 5,
+  "format_type": "fountain",
+  "word_count": 15000,
+  "scene_count": 45,
+  "episode_count": 20,
+  "version": 5,
   "created_at": "2026-06-16T10:00:00Z",
   "updated_at": "2026-06-16T10:30:00Z"
 }
@@ -142,7 +151,7 @@ ws://localhost:8080/ws/agent/{session_id}
 {
   "id": "uuid",
   "content": { ... },
-  "current_version": 6,
+  "version": 6,
   "updated_at": "2026-06-16T10:35:00Z"
 }
 ```
@@ -165,16 +174,14 @@ ws://localhost:8080/ws/agent/{session_id}
   "items": [
     {
       "id": "uuid",
-      "version_number": 5,
-      "change_summary": "修改第1集对白",
-      "change_source": "manual",
+      "version": 5,
+      "message": "修改第1集对白",
       "created_at": "2026-06-16T10:35:00Z"
     },
     {
       "id": "uuid",
-      "version_number": 4,
-      "change_summary": "AI 优化第1集节奏",
-      "change_source": "ai",
+      "version": 4,
+      "message": "AI 优化第1集节奏",
       "created_at": "2026-06-16T10:30:00Z"
     }
   ],
@@ -190,10 +197,9 @@ ws://localhost:8080/ws/agent/{session_id}
 ```json
 {
   "id": "uuid",
-  "version_number": 4,
+  "version": 4,
   "content": { ... },
-  "change_summary": "AI 优化第1集节奏",
-  "change_source": "ai",
+  "message": "AI 优化第1集节奏",
   "created_at": "2026-06-16T10:30:00Z"
 }
 ```
@@ -207,7 +213,7 @@ ws://localhost:8080/ws/agent/{session_id}
 {
   "id": "uuid",
   "content": { ... },
-  "current_version": 7,
+  "version": 7,
   "updated_at": "2026-06-16T10:40:00Z"
 }
 ```
@@ -348,19 +354,27 @@ AI 优化选中的剧本段落。
 ```json
 {
   "project_id": "uuid",
-  "episode_number": 1,
-  "scene_id": "S01E01_SC01",
-  "beat_ids": ["S01E01_SC01_B02"],
-  "optimization_type": "dialogue_polish"
+  "text": "这个方案不行，推翻重来。",
+  "element_type": "dialogue",
+  "context": "第1集第1场，陈昊对林晚秋说"
 }
 ```
 
-**Response** (202 Accepted):
+**Response** (200):
 ```json
 {
-  "session_id": "uuid",
-  "status": "pending",
-  "websocket_url": "ws://localhost:8080/ws/agent/{session_id}"
+  "alternatives": [
+    {
+      "text": "这种方案也拿得出手？重做。",
+      "style": "direct",
+      "reason": "更直接的表达，增强冲突感"
+    },
+    {
+      "text": "晚秋，你觉得这个方案能过审吗？",
+      "style": "indirect",
+      "reason": "用反问暗示不满，增加层次感"
+    }
+  ]
 }
 ```
 
@@ -426,7 +440,7 @@ AI 优化选中的剧本段落。
     {
       "id": "uuid",
       "name": "林晚秋",
-      "role_type": "protagonist",
+      "role": "protagonist",
       "description": "28岁，互联网公司产品经理",
       "personality": ["坚韧", "聪明", "隐忍"],
       "created_at": "2026-06-16T10:00:00Z"
@@ -459,7 +473,7 @@ AI 优化选中的剧本段落。
 获取项目伏笔列表。
 
 **Query Parameters**:
-- `resolved` (bool, optional): 筛选已回收/未回收
+- `status` (string, optional): 筛选状态 (planted/resolved)
 
 **Response** (200):
 ```json
@@ -467,12 +481,12 @@ AI 优化选中的剧本段落。
   "items": [
     {
       "id": "uuid",
-      "content": "晚秋在公司电梯里捡到一枚刻有'LQ'的戒指",
-      "planted_episode": 1,
-      "resolved": false,
-      "resolved_episode": null,
-      "related_characters": ["char_001"],
-      "importance": "high",
+      "plant": "晚秋在公司电梯里捡到一枚刻有'LQ'的戒指",
+      "payoff": null,
+      "episode_hint": 1,
+      "status": "planted",
+      "urgency": "high",
+      "character_id": "char_001",
       "created_at": "2026-06-16T10:00:00Z"
     }
   ],
@@ -487,8 +501,8 @@ AI 优化选中的剧本段落。
 **Request**:
 ```json
 {
-  "resolved": true,
-  "resolved_episode": 15
+  "status": "resolved",
+  "payoff": "第15集晚秋发现戒指是母亲遗物"
 }
 ```
 
@@ -564,7 +578,7 @@ AI 优化选中的剧本段落。
       "configured": true
     },
     {
-      "provider": "alibaba",
+      "provider": "dashscope",
       "key_preview": "sk-...xyz9",
       "configured": true
     }
@@ -603,7 +617,7 @@ AI 优化选中的剧本段落。
   "items": [
     {
       "id": "qwen-max",
-      "provider": "alibaba",
+      "provider": "dashscope",
       "name": "通义千问 Max",
       "use_case": "主力创作模型",
       "configured": true

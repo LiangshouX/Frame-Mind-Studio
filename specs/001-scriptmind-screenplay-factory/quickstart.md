@@ -2,11 +2,14 @@
 
 **Date**: 2026-06-16
 **Feature**: ScriptMind 剧本工厂
+**Updated**: 2026-06-18 — 后端从 Python/FastAPI 迁移至 Spring Boot + AgentScope-Java
 
 ## Prerequisites
 
+- JDK 17+
+- Node.js 20+
 - Docker 24.0+ 和 Docker Compose 2.20+
-- 至少一个 LLM 服务的 API Key（通义千问、GPT-4o、Claude、DeepSeek 任选其一）
+- 至少一个 LLM 服务的 API Key（DashScope / OpenAI / Anthropic）
 - 4GB+ 可用内存
 - 10GB+ 可用磁盘空间
 
@@ -22,8 +25,8 @@ cd studio
 # 配置 API Key
 cp .env.example .env
 # 编辑 .env，填入至少一个 API Key：
+# DASHSCOPE_API_KEY=sk-...
 # OPENAI_API_KEY=sk-...
-# QWEN_API_KEY=sk-...
 # ANTHROPIC_API_KEY=sk-ant-...
 
 # 启动所有服务
@@ -41,10 +44,9 @@ docker compose ps
 # 预期输出：
 # NAME                STATUS
 # framemind-frontend  Up
-# framemind-backend   Up
+# framemind-backend   Up (healthy)
 # framemind-postgres  Up (healthy)
 # framemind-redis     Up (healthy)
-# framemind-chromadb  Up
 ```
 
 ### 3. 验证场景
@@ -55,12 +57,11 @@ docker compose ps
 2. 点击"新建项目"
 3. 输入项目标题："逆袭女王"
 4. 选择题材标签：都市、复仇、逆袭
-5. 在创意输入框中输入："写一个现代都市复仇短剧，女主被渣男背叛后逆袭"
-6. 选择风格预设："逆袭"
-7. 点击"生成大纲"
-8. **预期**：界面显示 Agent 阶段进度（Showrunner → WorldBuilder → CharacterDesigner → ScriptDoctor），流式输出文本内容
-9. 大纲生成后显示人类审核节点，点击"批准"
-10. **预期**：大纲保存成功，显示集数规划和每集摘要
+5. 在 Agent 工作台输入："写一个现代都市复仇短剧，女主被渣男背叛后逆袭"
+6. 点击发送
+7. **预期**：界面显示 Agent 阶段进度（Showrunner → WorldBuilder → CharacterDesigner → ScriptDoctor），流式输出文本内容
+8. 大纲生成后显示人类审核节点，点击"批准"
+9. **预期**：大纲保存成功，显示集数规划和每集摘要
 
 **验证点**:
 - [ ] 大纲在 60 秒内生成
@@ -177,6 +178,34 @@ curl http://localhost:8080/api/v1/projects/<project_id>/script/quality
 # 预期：返回 JSON 包含各指标的值、目标、状态
 ```
 
+## 本地开发启动
+
+### 后端（Spring Boot）
+
+```bash
+cd backend
+
+# 启动 PostgreSQL 和 Redis
+docker compose up -d postgres redis
+
+# 配置环境变量（或在 application-dev.yml 中设置）
+export DASHSCOPE_API_KEY=sk-xxx
+
+# 运行数据库迁移
+mvn flyway:migrate
+
+# 启动应用
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+### 前端（Next.js）
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ## Troubleshooting
 
 ### 服务启动失败
@@ -190,6 +219,7 @@ docker compose logs frontend
 # - 端口被占用：修改 docker-compose.yml 中的端口映射
 # - API Key 未配置：检查 .env 文件
 # - 数据库连接失败：等待 postgres 健康检查通过
+# - JDK 版本不兼容：确保使用 JDK 17+
 ```
 
 ### Agent 生成超时
@@ -202,6 +232,7 @@ docker compose logs -f backend
 # - API Key 无效或额度不足
 # - 网络连接问题
 # - LLM 服务响应慢
+# - 可在 application.yml 中调整 agentscope.agent.max-iters
 ```
 
 ### 文件导入失败

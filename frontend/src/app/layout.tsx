@@ -2,15 +2,11 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'AI-DramaForge | 短剧创作工作台',
-  description: '多智能体协作的短剧剧本创作平台',
+  title: 'Frame Mind Studio | AI 微电影创作工作台',
+  description: '多智能体协作的微电影创作平台',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
       <head>
@@ -23,9 +19,7 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen antialiased">
-        {children}
-      </body>
+      <body className="min-h-screen antialiased">{children}</body>
     </html>
   )
 }

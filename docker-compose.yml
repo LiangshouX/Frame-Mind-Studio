@@ -29,34 +29,31 @@ services:
       timeout: 5s
       retries: 5
 
-  chromadb:
-    image: chromadb/chroma:latest
-    ports:
-      - "8000:8000"
-    volumes:
-      - chromadb_data:/chroma/chroma
-
   backend:
     build:
-      context: ./backend
+      context: ./backend-java
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-framemind}:${POSTGRES_PASSWORD:-framemind_dev}@postgres:5432/${POSTGRES_DB:-framemind}
-      REDIS_URL: redis://redis:6379/0
-      CHROMA_HOST: chromadb
-      CHROMA_PORT: 8000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-framemind}
+      DB_USER: ${POSTGRES_USER:-framemind}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-framemind_dev}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      FERNET_KEY: ${FERNET_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 
   frontend:
     build:
@@ -68,10 +65,7 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8080
     depends_on:
       - backend
-    volumes:
-      - ./frontend/src:/app/src
 
 volumes:
   postgres_data:
   redis_data:
-  chromadb_data:

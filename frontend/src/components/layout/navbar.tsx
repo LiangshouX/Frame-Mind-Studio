@@ -1,105 +1,54 @@
 'use client'
 
-import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
-import { Menu, X, Clapperboard, FolderOpen } from 'lucide-react'
-
-const navItems = [
-  { href: '/', label: '首页' },
-  { href: '/projects', label: '项目' },
-]
+import { Clapperboard, Settings, Loader2 } from 'lucide-react'
+import { useAgentStore } from '@/stores/agent-store'
+import { AGENT_STAGES } from '@/constants/agent-stages'
 
 export function Navbar() {
   const pathname = usePathname()
-  const [mobileOpen, setMobileOpen] = React.useState(false)
-  const [scrolled, setScrolled] = React.useState(false)
-
-  React.useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8)
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+  const { isRunning, stage, stageLabel } = useAgentStore()
 
   return (
-    <nav
-      className={cn(
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-200',
-        scrolled
-          ? 'bg-[var(--bg)]/95 backdrop-blur-sm border-b border-[var(--border-light)] shadow-sm'
-          : 'bg-transparent'
-      )}
-    >
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="flex items-center justify-between h-14">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="flex items-center justify-center w-7 h-7 rounded bg-[var(--text-primary)] transition-transform group-hover:scale-105">
-              <Clapperboard className="h-4 w-4 text-[var(--bg)]" />
-            </div>
-            <span className="font-display text-base font-bold tracking-tight text-[var(--text-primary)]">
-              DramaForge
-            </span>
-          </Link>
+    <nav className="fixed top-0 left-0 right-0 h-14 bg-[var(--bg-card)] border-b border-[var(--border)] z-50 flex items-center px-6 backdrop-blur-sm">
+      <Link href="/" className="flex items-center gap-2.5 mr-8 group">
+        <Clapperboard className="h-5 w-5 text-[var(--accent)] transition-transform group-hover:scale-110" />
+        <span className="font-display text-base font-bold tracking-tight text-[var(--text-primary)]">Frame Mind Studio</span>
+      </Link>
 
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'px-3 py-1.5 text-sm transition-colors rounded',
-                    isActive
-                      ? 'text-[var(--text-primary)] font-medium bg-[var(--bg-sidebar)]'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  )}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
-
-          {/* Mobile toggle */}
-          <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="md:hidden p-1.5 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            aria-label="菜单"
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
+      <div className="flex-1 flex items-center gap-6">
+        <Link
+          href="/projects"
+          className={`text-sm font-medium transition-colors ${
+            pathname.startsWith('/projects')
+              ? 'text-[var(--accent)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+          }`}
+        >
+          项目
+        </Link>
       </div>
 
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="md:hidden bg-[var(--bg)] border-b border-[var(--border-light)] animate-fade-in">
-          <div className="px-6 py-3 space-y-1">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={cn(
-                    'block px-3 py-2 text-sm rounded transition-colors',
-                    isActive
-                      ? 'text-[var(--text-primary)] font-medium bg-[var(--bg-sidebar)]'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  )}
-                >
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
+      {isRunning && stage && (
+        <div className="flex items-center gap-2 mr-4 px-3 py-1.5 rounded-full bg-[var(--accent-subtle)] border border-[var(--accent)]/15">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
+          <span className="text-sm text-[var(--accent)] font-medium">
+            {stageLabel || AGENT_STAGES[stage as keyof typeof AGENT_STAGES]?.label || stage}
+          </span>
         </div>
       )}
+
+      <Link
+        href="/settings"
+        className={`p-2 rounded-lg transition-colors ${
+          pathname === '/settings'
+            ? 'text-[var(--accent)] bg-[var(--accent-subtle)]'
+            : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+        }`}
+      >
+        <Settings className="h-5 w-5" />
+      </Link>
     </nav>
   )
 }

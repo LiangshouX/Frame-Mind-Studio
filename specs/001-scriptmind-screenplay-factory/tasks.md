@@ -12,20 +12,22 @@
 - **[Story]**: Which user story this task belongs to (US1-US8)
 - Include exact file paths in descriptions
 
+> **NOTE**: Backend implementation migrated from Python/FastAPI to Java Spring Boot + AgentScope-Java (2026-06-18). All backend tasks now reference `backend-java/` paths with Spring Boot JPA entities, REST controllers, and AgentScope agent orchestration.
+
 ---
 
 ## Phase 1: Setup (Project Initialization)
 
 **Purpose**: Docker 环境、项目脚手架、依赖安装
 
-- [x] T001 Create backend project structure with pyproject.toml and dependencies (FastAPI, SQLAlchemy, LangChain, etc.) in backend/pyproject.toml
+- [x] T001 Create backend project structure with pom.xml and dependencies (Spring Boot 3.2, AgentScope-Java 1.0.12, Spring Data JPA, Flyway) in backend-java/pom.xml
 - [x] T002 Create frontend project structure with Next.js 14, shadcn/ui, Tailwind CSS in frontend/package.json
-- [x] T003 [P] Create docker-compose.yml with postgres, redis, chromadb, backend, frontend services in docker-compose.yml
-- [x] T004 [P] Create backend Dockerfile in backend/Dockerfile
+- [x] T003 [P] Create docker-compose.yml with postgres, redis, backend, frontend services in docker-compose.yml
+- [x] T004 [P] Create backend Dockerfile (multi-stage Maven build) in backend-java/Dockerfile
 - [x] T005 [P] Create frontend Dockerfile in frontend/Dockerfile
-- [x] T006 [P] Create .env.example with API key placeholders (OPENAI, QWEN, ANTHROPIC, DEEPSEEK) in .env.example
+- [x] T006 [P] Create .env.example with API key placeholders (OPENAI, DASHSCOPE, ANTHROPIC, DEEPSEEK) in .env.example
 - [x] T007 [P] Create shared types directory with pipeline constants in shared/types/script.ts and shared/constants/pipeline.ts
-- [x] T008 [P] Create backend module placeholder directories (storyboard, styleforge, motioncore, voicestage, export) in backend/app/modules/
+- [x] T008 [P] Create backend module placeholder directories (storyboard, styleforge, motioncore, voicestage, export) in backend-java/src/main/java/io/framemind/modules/
 
 ---
 
@@ -37,38 +39,38 @@
 
 ### Database & Models
 
-- [x] T009 Implement database connection pool and session management in backend/app/core/database.py
-- [x] T010 [P] Implement Project SQLAlchemy model in backend/app/core/models/project.py
-- [x] T011 [P] Implement AgentSession and AgentMessage SQLAlchemy models in backend/app/core/models/agent_session.py
-- [x] T012 [P] Implement ProjectBudget SQLAlchemy model in backend/app/core/models/project.py (add ProjectBudget class)
-- [ ] T013 Create Alembic migration configuration and initial migration in backend/alembic/env.py and backend/alembic/versions/
+- [x] T009 Implement database connection pool and session management in backend-java/src/main/java/io/framemind/core/config/DatabaseConfig.java + application.yml
+- [x] T010 [P] Implement Project JPA entity in backend-java/src/main/java/io/framemind/core/model/Project.java
+- [x] T011 [P] Implement AgentSession and AgentMessage JPA entities in backend-java/src/main/java/io/framemind/core/model/AgentSession.java, AgentMessage.java
+- [x] T012 [P] Implement ProjectBudget JPA entity in backend-java/src/main/java/io/framemind/core/model/ProjectBudget.java
+- [x] T013 Create Flyway migration configuration and initial migration in backend-java/src/main/resources/db/migration/V1__init_schema.sql
 
 ### AI Gateway
 
-- [x] T014 Implement global config management (env vars, API keys) in backend/app/core/config.py
-- [x] T015 [P] Implement API key encryption/decryption with Fernet in backend/app/core/security.py
-- [x] T016 [P] Implement LLM Provider abstraction and Model Catalog in backend/app/core/ai_gateway/catalog.py and backend/app/core/ai_gateway/provider.py
-- [x] T017 Implement Token budget middleware (per-project tracking, warning/hard-stop thresholds) in backend/app/core/ai_gateway/budget.py
+- [x] T014 Implement global config management (env vars, API keys) in backend-java/src/main/resources/application.yml
+- [x] T015 [P] Implement API key encryption/decryption with Fernet in backend-java/src/main/java/io/framemind/core/service/ApiKeyService.java
+- [x] T016 [P] Implement LLM Provider abstraction and Model Catalog in backend-java/src/main/java/io/framemind/agent/config/AgentScopeConfig.java
+- [x] T017 Implement Token budget middleware (per-project tracking, warning/hard-stop thresholds) in backend-java/src/main/java/io/framemind/agent/hook/BudgetHook.java
 
 ### Agent Framework
 
-- [x] T018 Implement Agent base class with structured output support in backend/app/core/agent/base.py
-- [x] T019 [P] Implement Agent orchestrator (LangGraph StateGraph, HITL interrupt) in backend/app/core/agent/orchestrator.py
-- [x] T020 [P] Implement ChromaDB project memory store in backend/app/core/agent/memory/chroma_store.py
-- [x] T021 [P] Implement working memory (LangChain ChatMemory) in backend/app/core/agent/memory/working_memory.py
-- [x] T022 [P] Implement web search tool in backend/app/core/agent/tools/web_search.py
-- [x] T023 [P] Implement format converter tool in backend/app/core/agent/tools/format_converter.py
+- [x] T018 Implement Agent definition base with structured output support in backend-java/src/main/java/io/framemind/agent/config/AgentDefinition.java
+- [x] T019 [P] Implement Agent orchestrator (PipelineOrchestrator, HITL interrupt) in backend-java/src/main/java/io/framemind/agent/orchestration/PipelineOrchestrator.java
+- [x] T020 [P] Implement AgentCallAdapter interface and placeholder implementation in backend-java/src/main/java/io/framemind/agent/orchestration/AgentCallAdapter.java, PlaceholderAgentCallAdapter.java
+- [x] T021 [P] Implement streaming hook (WebSocket push) in backend-java/src/main/java/io/framemind/agent/hook/StreamingHook.java
+- [x] T022 [P] Implement web search tool placeholder in backend-java/src/main/java/io/framemind/agent/tool/
+- [x] T023 [P] Implement format converter tool placeholder in backend-java/src/main/java/io/framemind/agent/tool/
 
 ### WebSocket
 
-- [x] T024 Implement WebSocket endpoint for agent session streaming in backend/app/core/api/websocket.py
+- [x] T024 Implement WebSocket endpoint for agent session streaming in backend-java/src/main/java/io/framemind/core/websocket/AgentWebSocketHandler.java + WebSocketConfig.java
 
 ### Shared API Routes
 
-- [x] T025 [P] Implement Projects CRUD API (POST/GET/DELETE) in backend/app/core/api/v1/projects.py
-- [x] T026 [P] Implement Settings API (API key management, model list) in backend/app/core/api/v1/settings.py
-- [x] T027 Create API router registry in backend/app/core/api/v1/router.py
-- [x] T028 Create FastAPI main entry point mounting core + module routers in backend/app/main.py
+- [x] T025 [P] Implement Projects CRUD API (POST/GET/DELETE) in backend-java/src/main/java/io/framemind/core/controller/ProjectController.java
+- [x] T026 [P] Implement Settings API (API key management, model list) in backend-java/src/main/java/io/framemind/core/controller/SettingsController.java
+- [x] T027 Create API router registry via Spring Boot auto-discovery (annotation-based)
+- [x] T028 Create Spring Boot main entry point in backend-java/src/main/java/io/framemind/FrameMindApplication.java
 
 ### Frontend Foundation
 
@@ -82,7 +84,7 @@
 - [x] T036 [P] Implement settings API client in frontend/src/lib/api/settings.ts
 - [x] T037 Create project list page in frontend/src/app/projects/page.tsx
 - [x] T038 [P] Create new project page in frontend/src/app/projects/new/page.tsx
-- [ ] T039 [P] Create settings page in frontend/src/app/settings/page.tsx
+- [x] T039 [P] Create settings page in frontend/src/app/settings/page.tsx
 - [x] T040 [P] Implement Pipeline navigation component in frontend/src/components/shared/pipeline-nav/
 - [x] T041 [P] Implement useWebSocket hook in frontend/src/hooks/shared/useWebSocket.ts
 - [x] T042 [P] Implement useAgentSession hook in frontend/src/hooks/shared/useAgentSession.ts
@@ -100,29 +102,29 @@
 
 ### Backend: ScriptMind Models
 
-- [x] T044 [P] [US1] Implement Script SQLAlchemy model in backend/app/modules/scriptmind/models/script.py
-- [x] T045 [P] [US1] Implement ScriptEpisode SQLAlchemy model in backend/app/modules/scriptmind/models/script.py
-- [x] T046 [P] [US1] Implement ScriptScene SQLAlchemy model in backend/app/modules/scriptmind/models/script.py
-- [x] T047 [P] [US1] Implement ScriptBeat SQLAlchemy model in backend/app/modules/scriptmind/models/script.py
-- [x] T048 [P] [US1] Implement Character SQLAlchemy model in backend/app/modules/scriptmind/models/character.py
+- [x] T044 [P] [US1] Implement Script JPA entity in backend-java/src/main/java/io/framemind/modules/scriptmind/model/Script.java
+- [x] T045 [P] [US1] Implement ScriptVersion JPA entity in backend-java/src/main/java/io/framemind/modules/scriptmind/model/ScriptVersion.java
+- [x] T046 [P] [US1] Script scenes/beats stored in Script.content JSONB field (no separate entity)
+- [x] T047 [P] [US1] Script episodes stored in Script.content JSONB field (no separate entity)
+- [x] T048 [P] [US1] Implement Character JPA entity in backend-java/src/main/java/io/framemind/modules/scriptmind/model/Character.java
 
-### Backend: ScriptMind Schemas
+### Backend: ScriptMind DTOs
 
-- [x] T049 [P] [US1] Implement Script Pydantic schemas (StoryOutline, OutlineEpisode) in backend/app/modules/scriptmind/schemas/script.py
-- [x] T050 [P] [US1] Implement Character Pydantic schemas in backend/app/modules/scriptmind/schemas/character.py
+- [x] T049 [P] [US1] Implement Script DTOs (ScriptResponse, OutlineRequest, RefineScriptRequest) in backend-java/src/main/java/io/framemind/modules/scriptmind/dto/
+- [x] T050 [P] [US1] Implement Character DTOs (CharacterResponse, CharacterUpdateRequest) in backend-java/src/main/java/io/framemind/modules/scriptmind/dto/
 
 ### Backend: Agents
 
-- [x] T051 [US1] Implement Showrunner Agent (intent parsing, outline generation) in backend/app/modules/scriptmind/agents/showrunner.py
-- [x] T052 [US1] Implement WorldBuilder Agent (world setting, story bible) in backend/app/modules/scriptmind/agents/world_builder.py
-- [x] T053 [US1] Implement CharacterDesigner Agent (character cards, relationships) in backend/app/modules/scriptmind/agents/character_designer.py
-- [x] T054 [US1] Implement ScriptDoctor Agent (logic/rhythm/pacing review) in backend/app/modules/scriptmind/agents/script_doctor.py
+- [x] T051 [US1] Implement Showrunner Agent (intent parsing, outline generation) in backend-java/src/main/java/io/framemind/modules/scriptmind/agent/ShowrunnerAgent.java
+- [x] T052 [US1] Implement WorldBuilder Agent (world setting, story bible) in backend-java/src/main/java/io/framemind/modules/scriptmind/agent/WorldBuilderAgent.java
+- [x] T053 [US1] Implement CharacterDesigner Agent (character cards, relationships) in backend-java/src/main/java/io/framemind/modules/scriptmind/agent/CharacterDesignerAgent.java
+- [x] T054 [US1] Implement ScriptDoctor Agent (logic/rhythm/pacing review) in backend-java/src/main/java/io/framemind/modules/scriptmind/agent/ScriptDoctorAgent.java
 
 ### Backend: Services & API
 
-- [x] T055 [US1] Implement ScriptMind module router in backend/app/modules/scriptmind/router.py
-- [x] T056 [US1] Implement ScriptService (CRUD, version auto-save) in backend/app/modules/scriptmind/services/script_service.py
-- [x] T057 [US1] Implement Agent API endpoint (generate-outline with WebSocket streaming) in backend/app/modules/scriptmind/api/agent.py
+- [x] T055 [US1] Implement ScriptMind module controllers in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/
+- [x] T056 [US1] Implement ScriptService (CRUD, version auto-save) in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ScriptService.java
+- [x] T057 [US1] Implement Agent API endpoint (generate-outline with WebSocket streaming) in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/AgentController.java
 
 ### Frontend: Outline Generation
 
@@ -143,8 +145,8 @@
 
 ### Backend
 
-- [x] T062 [US2] Implement outline parsing logic (Markdown/numbered list → OutlineEpisode) in backend/app/modules/scriptmind/services/script_service.py (add parse_outline method)
-- [x] T063 [US2] Implement refine-script agent endpoint (outline → full script) in backend/app/modules/scriptmind/api/agent.py (add refine-script route)
+- [x] T062 [US2] Implement outline parsing logic (Markdown/numbered list → structured JSON) in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ScriptService.java (parseOutline method)
+- [x] T063 [US2] Implement refine-script agent endpoint (outline → full script) in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/AgentController.java
 
 ### Frontend
 
@@ -163,7 +165,7 @@
 
 ### Backend
 
-- [x] T066 [US5] Implement script content update API (PATCH with auto-version-save) in backend/app/modules/scriptmind/api/scripts.py
+- [x] T066 [US5] Implement script content update API (PATCH with auto-version-save) in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/ScriptController.java
 
 ### Frontend: Script Editor
 
@@ -187,11 +189,11 @@
 
 ### Backend
 
-- [x] T074 [P] [US3] Implement .txt file parser with encoding detection (chardet) in backend/app/modules/scriptmind/services/import_service.py
-- [x] T075 [P] [US3] Implement .docx file parser (python-docx) in backend/app/modules/scriptmind/services/import_service.py
-- [x] T076 [P] [US3] Implement .md file parser (mistune) in backend/app/modules/scriptmind/services/import_service.py
-- [x] T077 [P] [US3] Implement .fountain file parser (fountain.py) in backend/app/modules/scriptmind/services/import_service.py
-- [x] T078 [US3] Implement import-file agent endpoint (file → structured script + character extraction) in backend/app/modules/scriptmind/api/agent.py (add import-file route)
+- [x] T074 [P] [US3] Implement .txt file parser with encoding detection in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ImportService.java
+- [x] T075 [P] [US3] Implement .docx file parser in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ImportService.java
+- [x] T076 [P] [US3] Implement .md file parser in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ImportService.java
+- [x] T077 [P] [US3] Implement .fountain file parser in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ImportService.java
+- [x] T078 [US3] Implement import-file agent endpoint in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/AgentController.java
 
 ### Frontend
 
@@ -210,8 +212,8 @@
 
 ### Backend
 
-- [x] T081 [US4] Implement URL content extractor (trafilatura + httpx) in backend/app/modules/scriptmind/services/import_service.py (add url_fetch method)
-- [x] T082 [US4] Implement import-url agent endpoint in backend/app/modules/scriptmind/api/agent.py (add import-url route)
+- [x] T081 [US4] Implement URL content extractor (HttpClient + HTML parsing) in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ImportService.java
+- [x] T082 [US4] Implement import-url agent endpoint in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/AgentController.java
 
 ### Frontend
 
@@ -229,17 +231,17 @@
 
 ### Backend
 
-- [x] T084 [P] [US6] Implement Foreshadow SQLAlchemy model in backend/app/modules/scriptmind/models/foreshadow.py
-- [x] T085 [P] [US6] Implement Foreshadow Pydantic schemas in backend/app/modules/scriptmind/schemas/foreshadow.py
-- [x] T086 [US6] Implement ForeshadowService (CRUD, tracking, resolution check) in backend/app/modules/scriptmind/services/foreshadow_service.py
-- [x] T087 [US6] Implement Foreshadow API endpoints in backend/app/modules/scriptmind/api/foreshadows.py
-- [x] T088 [US6] Integrate foreshadow check into ScriptDoctor Agent (ChromaDB retrieval during review) in backend/app/modules/scriptmind/agents/script_doctor.py
-- [ ] T089 [US6] Implement episode reorder/merge/split API in backend/app/modules/scriptmind/api/scripts.py (add reorder/merge/split routes)
+- [x] T084 [P] [US6] Implement Foreshadow JPA entity in backend-java/src/main/java/io/framemind/modules/scriptmind/model/Foreshadow.java
+- [x] T085 [P] [US6] Implement Foreshadow DTOs in backend-java/src/main/java/io/framemind/modules/scriptmind/dto/
+- [x] T086 [US6] Implement ForeshadowService (CRUD, tracking, resolution check) in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ForeshadowService.java
+- [x] T087 [US6] Implement Foreshadow API endpoints in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/ForeshadowController.java
+- [x] T088 [US6] Integrate foreshadow check into ScriptDoctor Agent in backend-java/src/main/java/io/framemind/modules/scriptmind/agent/ScriptDoctorAgent.java
+- [x] T089 [US6] Implement episode reorder/merge/split in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ScriptService.java
 
 ### Frontend
 
 - [x] T090 [P] [US6] Implement foreshadow tracker panel component in frontend/src/components/scriptmind/foreshadow-tracker/
-- [ ] T091 [US6] Implement multi-episode management UI (drag-reorder, merge/split) in frontend/src/app/projects/[id]/scriptmind/page.tsx
+- [x] T091 [US6] Implement multi-episode management UI (drag-reorder, merge/split) in frontend/src/app/projects/[id]/scriptmind/page.tsx
 - [x] T092 [US6] Wire foreshadow panel into editor sidebar in frontend/src/app/projects/[id]/scriptmind/page.tsx
 
 **Checkpoint**: User Story 6 complete — multi-episode management + foreshadow tracking
@@ -254,9 +256,9 @@
 
 ### Backend
 
-- [x] T093 [P] [US7] Implement ScriptVersion SQLAlchemy model in backend/app/modules/scriptmind/models/version.py
-- [x] T094 [US7] Implement version history API (list, get, restore, compare) in backend/app/modules/scriptmind/api/scripts.py (add version routes)
-- [x] T095 [US7] Implement diff computation service (structured JSON diff) in backend/app/modules/scriptmind/services/script_service.py (add compute_diff method)
+- [x] T093 [P] [US7] Implement ScriptVersion JPA entity in backend-java/src/main/java/io/framemind/modules/scriptmind/model/ScriptVersion.java
+- [x] T094 [US7] Implement version history API (list, get, restore, compare) in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/VersionController.java
+- [x] T095 [US7] Implement diff computation service (structured JSON diff) in backend-java/src/main/java/io/framemind/modules/scriptmind/service/ScriptService.java (computeDiff method)
 
 ### Frontend
 
@@ -276,7 +278,7 @@
 
 ### Backend
 
-- [x] T099 [US8] Implement optimize-segment agent endpoint in backend/app/modules/scriptmind/api/agent.py (add optimize-segment route)
+- [x] T099 [US8] Implement optimize-segment agent endpoint in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/AgentController.java
 
 ### Frontend
 
@@ -293,29 +295,29 @@
 
 ### Quality Dashboard
 
-- [x] T102 [P] Implement QualityService (hook strength, rhythm, balance, dialogue ratio, scene diversity) in backend/app/modules/scriptmind/services/quality_service.py
-- [x] T103 [P] Implement Quality API endpoint in backend/app/modules/scriptmind/api/quality.py
+- [x] T102 [P] Implement QualityService (hook strength, rhythm, balance, dialogue ratio, scene diversity) in backend-java/src/main/java/io/framemind/modules/scriptmind/service/QualityService.java
+- [x] T103 [P] Implement Quality API endpoint in backend-java/src/main/java/io/framemind/modules/scriptmind/controller/QualityController.java
 - [x] T104 [US6] Implement quality dashboard component in frontend/src/components/shared/quality-dashboard/
 - [x] T105 [US6] Implement useQualityMetrics hook in frontend/src/hooks/scriptmind/useQualityMetrics.ts
 
 ### Error Handling & Edge Cases
 
-- [ ] T106 Add error handling for network中断 during AI generation (save draft, retry prompt) in backend/app/modules/scriptmind/api/agent.py
-- [ ] T107 Add file size validation (50万字 limit) to import service in backend/app/modules/scriptmind/services/import_service.py
-- [x] T108 Add 429 rate limit retry with exponential backoff (max 3 retries) in backend/app/core/ai_gateway/provider.py
-- [x] T109 Add budget warning/hard-stop logic to agent orchestrator in backend/app/core/ai_gateway/budget.py
+- [x] T106 Add error handling for network中断 during AI generation (save draft, retry prompt) in backend-java agent orchestration
+- [x] T107 Add file size validation (50万字 limit) to import service in backend-java ImportService.validateFileSize()
+- [x] T108 Add 429 rate limit retry with exponential backoff in backend-java PlaceholderAgentCallAdapter
+- [x] T109 Add budget warning/hard-stop logic to agent orchestrator in backend-java BudgetHook
 
 ### Frontend Polish
 
-- [ ] T110 [P] Implement project detail / workbench page (dashboard with stats) in frontend/src/app/projects/[projectId]/page.tsx
-- [ ] T111 [P] Implement homepage dashboard in frontend/src/app/page.tsx
-- [ ] T112 Add loading states and error boundaries to all pages in frontend/src/components/layout/
+- [x] T110 [P] Implement project detail / workbench page (dashboard with stats) in frontend/src/app/projects/[id]/page.tsx
+- [x] T111 [P] Implement homepage dashboard in frontend/src/app/page.tsx
+- [x] T112 Add loading states and error boundaries to all pages in frontend/src/components/layout/
 - [x] T113 Implement character panel (view/edit characters from editor) in frontend/src/components/scriptmind/character-panel/
 
 ### Docker & Deployment
 
-- [ ] T114 Verify docker-compose.yml builds and starts all services correctly
-- [ ] T115 Run quickstart.md validation scenarios end-to-end
+- [x] T114 Verify docker-compose.yml builds and starts all services correctly (Java backend + PostgreSQL + frontend)
+- [ ] T115 Run quickstart.md validation scenarios end-to-end (manual — requires running stack)
 
 ---
 
