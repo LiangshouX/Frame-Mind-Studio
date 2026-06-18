@@ -64,10 +64,40 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         String sessionId = extractSessionId(session);
-        log.error("WebSocket transport error on session {}: {}", sessionId, exception.getMessage(), exception);
-        if (session.isOpen()) {
-            session.close(CloseStatus.SERVER_ERROR);
+
+        // Connection resets from client disconnection are expected during page navigation
+        if (isClientDisconnect(exception)) {
+            log.debug("WebSocket client disconnected: session_id={}", sessionId);
+        } else {
+            log.error("WebSocket transport error on session {}: {}", sessionId, exception.getMessage(), exception);
         }
+
+        if (session.isOpen()) {
+            try {
+                session.close(CloseStatus.NORMAL);
+            } catch (Exception e) {
+                log.debug("Error closing WebSocket session: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Checks if the exception is a client-side disconnection (connection reset, broken pipe, etc.)
+     */
+    private boolean isClientDisconnect(Throwable exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            String msg = cause.getMessage();
+            if (msg != null && (
+                    msg.contains("Connection reset") ||
+                    msg.contains("你的主机中的软件中止了一个已建立的连接") ||
+                    msg.contains("Broken pipe") ||
+                    msg.contains("Connection closed"))) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     public void sendMessageToSession(String sessionId, String message) {

@@ -4,7 +4,7 @@ import { ConnectionStatus } from '@/types/agent'
 interface AgentMessageUI {
   id: string
   agentName: string
-  role: 'agent' | 'user' | 'system'
+  role: 'agent' | 'user' | 'system' | 'error'
   content: string
   isStreaming: boolean
   timestamp: string
@@ -25,6 +25,7 @@ interface AgentStore {
   setStage: (stage: string, label: string) => void
   addMessage: (msg: AgentMessageUI) => void
   appendStream: (content: string) => void
+  finishStreaming: () => void
   setRunning: (running: boolean) => void
   setReviewing: (reviewing: boolean, content?: string) => void
   setTokens: (tokens: number) => void
@@ -72,6 +73,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
     set({ messages: msgs })
   },
+
+  finishStreaming: () =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.isStreaming ? { ...m, isStreaming: false } : m
+      ),
+    })),
 
   setRunning: (isRunning) => set({ isRunning }),
 

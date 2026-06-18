@@ -7,11 +7,12 @@ import { Wand2, Loader2, X } from 'lucide-react'
 interface OptimizePanelProps {
   projectId: string
   selectedText: string
+  elementType?: string
   onClose: () => void
   onApply: (text: string) => void
 }
 
-export function OptimizePanel({ projectId, selectedText, onClose, onApply }: OptimizePanelProps) {
+export function OptimizePanel({ projectId, selectedText, elementType = 'dialogue', onClose, onApply }: OptimizePanelProps) {
   const [alternatives, setAlternatives] = useState<Array<{ text: string; style: string; reason: string }>>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +24,7 @@ export function OptimizePanel({ projectId, selectedText, onClose, onApply }: Opt
       const result = await agentApi.optimizeSegment({
         project_id: projectId,
         text: selectedText,
-        element_type: 'dialogue',
+        element_type: elementType,
       })
       setAlternatives(result.alternatives)
     } catch (err) {

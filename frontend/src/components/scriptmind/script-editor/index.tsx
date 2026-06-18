@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createEditor, Descendant, Element as SlateElement } from 'slate'
 import { Slate, Editable, withReact, RenderElementProps } from 'slate-react'
 import { withHistory } from 'slate-history'
-import { Script, ElementType } from '@/types/script'
+import { Script, ScriptContent, ScriptEpisode, ScriptScene, ScriptBeat, ElementType } from '@/types/script'
 import { useEditorStore } from '@/stores/editor-store'
 import { ELEMENT_TYPE_NEXT, ENTER_DEFAULT_AFTER } from '@/constants/element-types'
 import { debounce } from '@/lib/utils/debounce'
@@ -46,14 +46,186 @@ function scriptToSlate(script: Script | null): Descendant[] {
   return nodes.length > 0 ? nodes : [{ type: 'action', children: [{ text: '' }] } as Descendant]
 }
 
+/** Convert Slate editor nodes back to structured ScriptContent format */
+function slateToScript(nodes: Descendant[], title = '', totalEpisodes = 1): ScriptContent {
+  const episodes: ScriptEpisode[] = []
+  let currentEpisode: ScriptEpisode = {
+    episodeNumber: 1,
+    title: '',
+    durationMinutes: 0,
+    scenes: [],
+  }
+  let currentScene: ScriptScene | null = null
+  let lastDialogueBeat: ScriptBeat | null = null
+
+  const ensureEpisode = () => {
+    if (currentEpisode.scenes.length === 0) {
+      episodes.push(currentEpisode)
+    } else if (!episodes.includes(currentEpisode)) {
+      episodes.push(currentEpisode)
+    }
+  }
+
+  const ensureScene = (): ScriptScene => {
+    if (!currentScene) {
+      currentScene = {
+        sceneId: `S${currentEpisode.scenes.length + 1}`,
+        location: '',
+        time: '',
+        moodTags: [],
+        charactersPresent: [],
+        beats: [],
+      }
+      currentEpisode.scenes.push(currentScene)
+    }
+    return currentScene
+  }
+
+  for (const node of nodes) {
+    const el = node as CustomElement
+    const text = el.children?.map((c: CustomText) => c.text).join('') || ''
+
+    switch (el.type) {
+      case 'scene_heading': {
+        ensureEpisode()
+        const parts = text.split('—').map(s => s.trim())
+        currentScene = {
+          sceneId: `S${currentEpisode.scenes.length + 1}`,
+          location: parts[0] || text,
+          time: parts[1] || '',
+          moodTags: [],
+          charactersPresent: [],
+          beats: [],
+        }
+        currentEpisode.scenes.push(currentScene)
+        lastDialogueBeat = null
+        break
+      }
+      case 'character': {
+        // Character heading before dialogue — will be merged with next dialogue node
+        const scene = ensureScene()
+        // Pre-create dialogue beat with character name
+        const charName = text.trim()
+        lastDialogueBeat = {
+          beatId: `B${scene.beats.length + 1}`,
+          type: 'dialogue',
+          content: '',
+          character: charName,
+          emotion: null,
+          cameraSuggestion: null,
+          durationSeconds: null,
+        }
+        scene.beats.push(lastDialogueBeat)
+        break
+      }
+      case 'dialogue': {
+        const scene = ensureScene()
+        if (lastDialogueBeat && lastDialogueBeat.content === '') {
+          // Merge with preceding character node
+          lastDialogueBeat.content = text
+        } else {
+          // Standalone dialogue (no preceding character)
+          lastDialogueBeat = {
+            beatId: `B${scene.beats.length + 1}`,
+            type: 'dialogue',
+            content: text,
+            character: null,
+            emotion: null,
+            cameraSuggestion: null,
+            durationSeconds: null,
+          }
+          scene.beats.push(lastDialogueBeat)
+        }
+        break
+      }
+      case 'parenthetical': {
+        // Append to previous dialogue beat's content
+        if (lastDialogueBeat) {
+          lastDialogueBeat.content += ` (${text})`
+        }
+        break
+      }
+      case 'transition': {
+        const scene = ensureScene()
+        lastDialogueBeat = null
+        scene.beats.push({
+          beatId: `B${scene.beats.length + 1}`,
+          type: 'transition',
+          content: text,
+          character: null,
+          emotion: null,
+          cameraSuggestion: null,
+          durationSeconds: null,
+        })
+        break
+      }
+      case 'action':
+      default: {
+        const scene = ensureScene()
+        lastDialogueBeat = null
+        scene.beats.push({
+          beatId: `B${scene.beats.length + 1}`,
+          type: 'action',
+          content: text,
+          character: null,
+          emotion: null,
+          cameraSuggestion: null,
+          durationSeconds: null,
+        })
+        break
+      }
+    }
+  }
+
+  ensureEpisode()
+
+  return {
+    title,
+    totalEpisodes: Math.max(totalEpisodes, episodes.length),
+    episodes,
+  }
+}
+
 export function ScriptEditor({ projectId, script }: ScriptEditorProps) {
   const editor = useMemo(() => withHistory(withReact(createEditor())), [])
-  const { currentElementType, setDirty } = useEditorStore()
+  const editorRef = useRef(editor)
+  const { currentElementType, setDirty, setSaving, markSaved, saveRequestCount } = useEditorStore()
   const initialValue = useMemo(() => scriptToSlate(script), [script])
+  // Key forces Slate to re-mount when script data changes (e.g. after async load or restore)
+  const slateKey = useMemo(() => script?.id || script?.content?.title || 'empty', [script])
+
+  const performSave = useCallback(async (changeSummary?: string) => {
+    const content = slateToScript(
+      editorRef.current.children,
+      script?.content?.title || script?.title || '',
+      script?.content?.totalEpisodes || 1,
+    )
+    setSaving(true)
+    try {
+      await scriptsApi.updateScript(projectId, content, changeSummary)
+      markSaved()
+    } catch {
+      setSaving(false)
+    }
+  }, [projectId, script, setSaving, markSaved])
 
   const autoSave = useMemo(() => debounce(async () => {
-    try { await scriptsApi.updateScript(projectId, script?.content || { title: '', totalEpisodes: 0, episodes: [] }) } catch {}
-  }, 30_000), [projectId, script])
+    await performSave()
+  }, 30_000), [performSave])
+
+  const handleManualSave = useCallback(async () => {
+    autoSave.cancel()
+    await performSave('手动保存')
+  }, [autoSave, performSave])
+
+  // Watch for save requests from toolbar
+  const prevSaveCount = useRef(saveRequestCount)
+  useEffect(() => {
+    if (saveRequestCount > prevSaveCount.current) {
+      prevSaveCount.current = saveRequestCount
+      handleManualSave()
+    }
+  }, [saveRequestCount, handleManualSave])
 
   const handleChange = useCallback(() => { setDirty(true); autoSave() }, [setDirty, autoSave])
 
@@ -81,12 +253,15 @@ export function ScriptEditor({ projectId, script }: ScriptEditorProps) {
         if (match) { const [node] = match; const el = node as CustomElement; if ((el.children?.map((c: CustomText) => c.text).join('') || '').length === 0) { event.preventDefault(); editor.deleteBackward('block') } }
       }
     }
-    if ((event.ctrlKey || event.metaKey) && event.key === 's') event.preventDefault()
-  }, [editor, currentElementType])
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+      event.preventDefault()
+      handleManualSave()
+    }
+  }, [editor, currentElementType, handleManualSave])
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <Slate editor={editor} initialValue={initialValue} onChange={handleChange}>
+      <Slate key={slateKey} editor={editor} initialValue={initialValue} onChange={handleChange}>
         <Editable renderElement={ElementRenderer} onKeyDown={handleKeyDown} placeholder="开始编写剧本..." className="min-h-[50vh] focus:outline-none" spellCheck={false} />
       </Slate>
     </div>

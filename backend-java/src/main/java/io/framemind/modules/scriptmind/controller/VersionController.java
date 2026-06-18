@@ -1,6 +1,7 @@
 package io.framemind.modules.scriptmind.controller;
 
 import io.framemind.modules.scriptmind.dto.DiffResponse;
+import io.framemind.modules.scriptmind.dto.ScriptResponse;
 import io.framemind.modules.scriptmind.dto.VersionDetailResponse;
 import io.framemind.modules.scriptmind.dto.VersionListResponse;
 import io.framemind.modules.scriptmind.model.Script;
@@ -14,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -52,15 +52,27 @@ public class VersionController {
      * Restore the script to a specific version.
      */
     @PostMapping("/{versionId}/restore")
-    public ResponseEntity<Map<String, Object>> restoreVersion(
+    public ResponseEntity<ScriptResponse> restoreVersion(
             @PathVariable UUID projectId,
             @PathVariable int versionId) {
         Script script = scriptService.restoreVersion(projectId, versionId);
-        return ResponseEntity.ok(Map.of(
-                "id", script.getId(),
-                "version", script.getVersion(),
-                "message", "Restored from version " + versionId
-        ));
+        return ResponseEntity.ok(toResponse(script));
+    }
+
+    private ScriptResponse toResponse(Script script) {
+        return new ScriptResponse(
+                script.getId(),
+                script.getProject().getId(),
+                script.getTitle(),
+                script.getContent(),
+                script.getFormatType(),
+                script.getWordCount(),
+                script.getSceneCount(),
+                script.getEpisodeCount(),
+                script.getVersion(),
+                script.getCreatedAt(),
+                script.getUpdatedAt()
+        );
     }
 
     /**

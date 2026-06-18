@@ -22,11 +22,11 @@
 
 ### Implementation
 
-- [ ] T001 [US1] 在 `frontend/src/stores/agent-store.ts` 中新增 `finishStreaming` action：遍历 `messages` 数组，将所有 `isStreaming: true` 的消息设为 `isStreaming: false`
-- [ ] T002 [US1] 在 `frontend/src/hooks/shared/use-websocket.ts` 的 `complete` case 中调用 `store.finishStreaming()`，替换原有的 `// mark all streaming messages as done` 注释
-- [ ] T003 [US1] 在 `frontend/src/hooks/shared/use-websocket.ts` 的 `error` case 中调用 `store.addMessage()` 添加一条 `role: 'error'` 的系统错误消息，内容为 WebSocket 接收到的错误文本
-- [ ] T004 [US1] 在 `frontend/src/components/shared/agent-chat/message-list.tsx` 中添加 `useRef` 引用滚动容器和底部哨兵元素，通过 `useEffect` 监听 `messages` 变化自动滚动到底部
-- [ ] T005 [US1] 在 `frontend/src/components/shared/agent-chat/input-bar.tsx` 的 `onSubmit` 中添加空输入校验：`trim()` 后为空则不发送
+- [X] T001 [US1] 在 `frontend/src/stores/agent-store.ts` 中新增 `finishStreaming` action：遍历 `messages` 数组，将所有 `isStreaming: true` 的消息设为 `isStreaming: false`
+- [X] T002 [US1] 在 `frontend/src/hooks/shared/use-websocket.ts` 的 `complete` case 中调用 `store.finishStreaming()`，替换原有的 `// mark all streaming messages as done` 注释
+- [X] T003 [US1] 在 `frontend/src/hooks/shared/use-websocket.ts` 的 `error` case 中调用 `store.addMessage()` 添加一条 `role: 'error'` 的系统错误消息，内容为 WebSocket 接收到的错误文本
+- [X] T004 [US1] 在 `frontend/src/components/shared/agent-chat/message-list.tsx` 中添加 `useRef` 引用滚动容器和底部哨兵元素，通过 `useEffect` 监听 `messages` 变化自动滚动到底部
+- [X] T005 [US1] 在 `frontend/src/components/shared/agent-chat/input-bar.tsx` 的 `onSubmit` 中添加空输入校验：`trim()` 后为空则不发送
 
 **Checkpoint**: Agent 聊天交互闭环完成 — 流式输出、自动滚动、错误显示均可用
 
@@ -42,8 +42,8 @@
 
 ### Implementation
 
-- [ ] T006 [US2] 在 `frontend/src/app/projects/[id]/page.tsx` 中定义 `handleRefine` 回调，调用 `agent.startRefineScript(outlineContent)`，传递给 `<OutlineViewer onRefine={handleRefine} />`
-- [ ] T007 [US2] 在 `frontend/src/components/scriptmind/outline-viewer/index.tsx` 中添加 loading 状态（骨架屏）和 error 状态（错误提示 + 重试按钮），处理 `content` 为 null/undefined 的情况
+- [X] T006 [US2] 在 `frontend/src/app/projects/[id]/page.tsx` 中定义 `handleRefine` 回调，调用 `agent.startRefineScript(outlineContent)`，传递给 `<OutlineViewer onRefine={handleRefine} />`
+- [X] T007 [US2] 在 `frontend/src/components/scriptmind/outline-viewer/index.tsx` 中添加 loading 状态（骨架屏）和 error 状态（错误提示 + 重试按钮），处理 `content` 为 null/undefined 的情况
 
 **Checkpoint**: 大纲→剧本细化流程打通
 
@@ -57,11 +57,11 @@
 
 ### Implementation
 
-- [ ] T008 [US3] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中实现 `slateToScript` 函数：遍历 `editor.children`，根据节点类型（`scene_heading`/`action`/`character`/`dialogue`/`parenthetical`/`transition`）重建 `ScriptContent` 层级结构（episodes → scenes → beats）
-- [ ] T009 [US3] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中修复 `autoSave`：使用 `useRef` 持有 editor 实例引用，debounce 回调中通过 `editorRef.current.children` 和 `slateToScript` 获取当前内容后调用 `scriptsApi.updateScript`
-- [ ] T010 [US3] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中修复 `Ctrl+S`：`handleKeyDown` 中拦截 Ctrl+S 后调用手动保存函数（非 autoSave），附带 `changeSummary` 参数
-- [ ] T011 [US3] 在 `frontend/src/stores/editor-store.ts` 中确保 `setSaving(true/false)` 在保存流程中被正确调用：保存开始时 `setSaving(true)`，成功/失败时 `setSaving(false)`
-- [ ] T012 [US3] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中导入 `EditorToolbar` 组件，渲染在编辑器上方，传递 `onSave` prop（调用 `scriptsApi.updateScript`）
+- [X] T008 [US3] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中实现 `slateToScript` 函数：遍历 `editor.children`，根据节点类型（`scene_heading`/`action`/`character`/`dialogue`/`parenthetical`/`transition`）重建 `ScriptContent` 层级结构（episodes → scenes → beats）
+- [X] T009 [US3] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中修复 `autoSave`：使用 `useRef` 持有 editor 实例引用，debounce 回调中通过 `editorRef.current.children` 和 `slateToScript` 获取当前内容后调用 `scriptsApi.updateScript`
+- [X] T010 [US3] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中修复 `Ctrl+S`：`handleKeyDown` 中拦截 Ctrl+S 后调用手动保存函数（非 autoSave），附带 `changeSummary` 参数
+- [X] T011 [US3] 在 `frontend/src/stores/editor-store.ts` 中确保 `setSaving(true/false)` 在保存流程中被正确调用：保存开始时 `setSaving(true)`，成功/失败时 `setSaving(false)`
+- [X] T012 [US3] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中导入 `EditorToolbar` 组件，渲染在编辑器上方，传递 `onSave` prop（调用 `scriptsApi.updateScript`）
 
 **Checkpoint**: 编辑器工具栏可见，自动保存和手动保存均正确工作
 
@@ -77,10 +77,10 @@
 
 ### Implementation
 
-- [ ] T013 [P] [US5] 在 `frontend/src/components/scriptmind/scene-nav/index.tsx` 中添加 `onSceneClick: (sceneId: string) => void` prop，绑定到每个场景按钮的 `onClick`
-- [ ] T014 [US5] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中传递 `onSceneClick` 到 `SceneNav`，回调中通过 `document.querySelector` 或 Slate API 滚动到目标场景元素
-- [ ] T015 [US5] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中集成 `OptimizePanel`：添加 `showOptimize` 状态，工具栏"AI 优化"按钮切换该状态，传递 `selectedText` 和 `onApply` 回调
-- [ ] T016 [P] [US5] 在 `frontend/src/components/scriptmind/script-editor/optimize.tsx` 中将 `element_type` 改为从 prop 传入（新增 `elementType` prop），替换硬编码的 `'dialogue'`
+- [X] T013 [P] [US5] 在 `frontend/src/components/scriptmind/scene-nav/index.tsx` 中添加 `onSceneClick: (sceneId: string) => void` prop，绑定到每个场景按钮的 `onClick`
+- [X] T014 [US5] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中传递 `onSceneClick` 到 `SceneNav`，回调中通过 `document.querySelector` 或 Slate API 滚动到目标场景元素
+- [X] T015 [US5] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中集成 `OptimizePanel`：添加 `showOptimize` 状态，工具栏"AI 优化"按钮切换该状态，传递 `selectedText` 和 `onApply` 回调
+- [X] T016 [P] [US5] 在 `frontend/src/components/scriptmind/script-editor/optimize.tsx` 中将 `element_type` 改为从 prop 传入（新增 `elementType` prop），替换硬编码的 `'dialogue'`
 
 **Checkpoint**: 所有已实现的按钮和交互正确工作
 
@@ -96,9 +96,9 @@
 
 ### Implementation
 
-- [ ] T017 [US6] 新建 `frontend/src/components/shared/version-history/index.tsx`：版本历史面板组件，调用 `versionsApi.listVersions` 显示版本列表，支持选择版本回溯（`restoreVersion`）和两版本 diff 对比（`compareVersions`）
-- [ ] T018 [US6] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中将右侧面板改为标签页切换：使用 `useState<'characters' | 'foreshadows' | 'versions'>` 管理当前标签，条件渲染 `CharacterPanel` / `ForeshadowTracker` / `VersionHistory`
-- [ ] T019 [US6] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中确保手动保存时调用 `scriptsApi.updateScript` 附带 `changeSummary` 参数（用户输入或自动生成的变更摘要）
+- [X] T017 [US6] 新建 `frontend/src/components/shared/version-history/index.tsx`：版本历史面板组件，调用 `versionsApi.listVersions` 显示版本列表，支持选择版本回溯（`restoreVersion`）和两版本 diff 对比（`compareVersions`）
+- [X] T018 [US6] 在 `frontend/src/app/projects/[id]/scriptmind/page.tsx` 中将右侧面板改为标签页切换：使用 `useState<'characters' | 'foreshadows' | 'versions'>` 管理当前标签，条件渲染 `CharacterPanel` / `ForeshadowTracker` / `VersionHistory`
+- [X] T019 [US6] 在 `frontend/src/components/scriptmind/script-editor/index.tsx` 中确保手动保存时调用 `scriptsApi.updateScript` 附带 `changeSummary` 参数（用户输入或自动生成的变更摘要）
 
 **Checkpoint**: 版本历史面板可用，手动保存创建版本快照
 
@@ -112,9 +112,9 @@
 
 ### Implementation
 
-- [ ] T020 [P] [US8] 新建 `frontend/src/hooks/shared/use-agent-workbench.ts`：封装 `useAgentSession` 的结果加上 `handleSend`、`handleApprove`、`handleRevise`、`handleRefine` 回调逻辑
-- [ ] T021 [US8] 在 `frontend/src/app/projects/[id]/page.tsx` 中重构使用 `useAgentWorkbench` hook，移除重复的回调定义
-- [ ] T022 [US8] 在 `frontend/src/app/projects/[id]/scriptmind/outline/page.tsx` 中重构使用 `useAgentWorkbench` hook，移除重复的回调定义
+- [X] T020 [P] [US8] 新建 `frontend/src/hooks/shared/use-agent-workbench.ts`：封装 `useAgentSession` 的结果加上 `handleSend`、`handleApprove`、`handleRevise`、`handleRefine` 回调逻辑
+- [X] T021 [US8] 在 `frontend/src/app/projects/[id]/page.tsx` 中重构使用 `useAgentWorkbench` hook，移除重复的回调定义
+- [X] T022 [US8] 在 `frontend/src/app/projects/[id]/scriptmind/outline/page.tsx` 中重构使用 `useAgentWorkbench` hook，移除重复的回调定义
 
 **Checkpoint**: 代码去重完成，两个页面行为一致
 

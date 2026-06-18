@@ -1,39 +1,37 @@
 'use client'
 
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { AgentChat } from '@/components/shared/agent-chat'
 import { OutlineViewer } from '@/components/scriptmind/outline-viewer'
-import { useAgentSession } from '@/hooks/shared/use-agent-session'
-import { useProjectStore } from '@/stores/project-store'
-import { Sparkles, FileText } from 'lucide-react'
+import { useAgentWorkbench } from '@/hooks/shared/use-agent-workbench'
+import { Sparkles, FileText, ArrowRight } from 'lucide-react'
 
 export default function ProjectWorkbenchPage() {
   const params = useParams()
+  const router = useRouter()
   const projectId = params.id as string
-  const { currentProject } = useProjectStore()
-  const agent = useAgentSession(projectId)
+  const { outlineContent, handleSend, handleApprove, handleRevise, handleRefine } = useAgentWorkbench(projectId)
 
-  const handleSend = (text: string, stylePreset?: string) => {
-    agent.startOutlineGeneration(text, stylePreset, currentProject?.target_episodes)
-  }
-
-  const handleApprove = () => {
-    agent.submitReview('approve')
-  }
-
-  const handleRevise = (feedback: string) => {
-    agent.submitReview('revise', feedback)
-  }
-
-  const outlineContent = currentProject?.script?.content
   const hasOutline = !!outlineContent
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-6 flex gap-6 h-[calc(100vh-11rem)]">
+    <div className="flex h-full">
       {/* Left: Outline / Prompt Area */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin">
+      <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
         {hasOutline ? (
-          <OutlineViewer content={outlineContent} />
+          <div className="max-w-3xl mx-auto">
+            <OutlineViewer content={outlineContent} onRefine={handleRefine} />
+            <div className="mt-6 pt-6 border-t border-[var(--border-light)]">
+              <button
+                onClick={() => router.push(`/projects/${projectId}/scriptmind`)}
+                className="btn btn-primary flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                进入编辑器
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center px-8">
             <div className="w-16 h-16 rounded-2xl bg-[var(--accent-subtle)] flex items-center justify-center mb-6">
@@ -60,7 +58,7 @@ export default function ProjectWorkbenchPage() {
       </div>
 
       {/* Right: Agent Interaction Panel */}
-      <div className="w-[420px] flex-shrink-0">
+      <div className="w-[480px] flex-shrink-0 border-l border-[var(--border-light)]">
         <AgentChat
           projectId={projectId}
           onSend={handleSend}

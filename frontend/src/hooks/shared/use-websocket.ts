@@ -7,7 +7,7 @@ import { AgentWebSocketMessage } from '@/types/agent'
 
 export function useAgentWebSocket(sessionId: string | null) {
   const connRef = useRef<ReturnType<typeof connectAgentWebSocket> | null>(null)
-  const { setStage, appendStream, setReviewing, setRunning, setTokens, setBudgetWarning, setConnectionStatus, addMessage } = useAgentStore()
+  const { setStage, appendStream, setReviewing, setRunning, setTokens, setBudgetWarning, setConnectionStatus, addMessage, finishStreaming } = useAgentStore()
 
   const handleMessage = useCallback((msg: AgentWebSocketMessage) => {
     switch (msg.type) {
@@ -27,14 +27,15 @@ export function useAgentWebSocket(sessionId: string | null) {
       case 'complete':
         setRunning(false)
         setTokens(msg.data.tokens_consumed)
-        // mark all streaming messages as done
+        finishStreaming()
         break
       case 'error':
         setRunning(false)
+        finishStreaming()
         addMessage({
           id: `error-${Date.now()}`,
           agentName: 'system',
-          role: 'system',
+          role: 'error',
           content: msg.data.message,
           isStreaming: false,
           timestamp: new Date().toISOString(),
@@ -44,7 +45,7 @@ export function useAgentWebSocket(sessionId: string | null) {
         setBudgetWarning(msg.data.message)
         break
     }
-  }, [setStage, appendStream, setReviewing, setRunning, setTokens, setBudgetWarning, addMessage])
+  }, [setStage, appendStream, setReviewing, setRunning, setTokens, setBudgetWarning, addMessage, finishStreaming])
 
   useEffect(() => {
     if (!sessionId) return

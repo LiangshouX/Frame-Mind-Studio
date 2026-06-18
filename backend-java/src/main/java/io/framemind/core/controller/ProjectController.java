@@ -3,8 +3,17 @@ package io.framemind.core.controller;
 import io.framemind.core.dto.ProjectCreateRequest;
 import io.framemind.core.dto.ProjectListResponse;
 import io.framemind.core.dto.ProjectResponse;
+import io.framemind.modules.scriptmind.dto.ScriptResponse;
 import io.framemind.core.model.Project;
+import io.framemind.core.model.ProjectBudget;
+import io.framemind.core.repository.ProjectBudgetRepository;
 import io.framemind.core.service.ProjectService;
+import io.framemind.modules.scriptmind.model.Character;
+import io.framemind.modules.scriptmind.model.Foreshadow;
+import io.framemind.modules.scriptmind.model.Script;
+import io.framemind.modules.scriptmind.repository.CharacterRepository;
+import io.framemind.modules.scriptmind.repository.ForeshadowRepository;
+import io.framemind.modules.scriptmind.repository.ScriptRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +39,10 @@ import java.util.stream.Collectors;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final ScriptRepository scriptRepository;
+    private final CharacterRepository characterRepository;
+    private final ForeshadowRepository foreshadowRepository;
+    private final ProjectBudgetRepository projectBudgetRepository;
 
     @PostMapping
     public ResponseEntity<ProjectResponse> createProject(
@@ -51,7 +64,37 @@ public class ProjectController {
     public ResponseEntity<ProjectResponse> getProject(
             @PathVariable UUID projectId) {
         Project project = projectService.getProject(projectId);
-        return ResponseEntity.ok(ProjectResponse.from(project));
+
+        // Load related data
+        Script script = scriptRepository.findByProjectId(projectId).orElse(null);
+        List<Character> characters = characterRepository.findByProjectIdOrderByNameAsc(projectId);
+        List<Foreshadow> foreshadows = foreshadowRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
+        ProjectBudget budget = projectBudgetRepository.findByProjectId(projectId).orElse(null);
+
+        ScriptResponse scriptResponse = script != null ? new ScriptResponse(
+                script.getId(),
+                script.getProject().getId(),
+                script.getTitle(),
+                script.getContent(),
+                script.getFormatType(),
+                script.getWordCount(),
+                script.getSceneCount(),
+                script.getEpisodeCount(),
+                script.getVersion(),
+                script.getCreatedAt(),
+                script.getUpdatedAt()
+        ) : null;
+
+        ProjectResponse.ProjectBudgetResponse budgetResponse = budget != null
+                ? new ProjectResponse.ProjectBudgetResponse(
+                        budget.getId(),
+                        budget.getTokenLimit(),
+                        budget.getTokensUsed(),
+                        budget.getWarningThreshold() != null ? budget.getWarningThreshold().toPlainString() : "0.80")
+                : null;
+
+        return ResponseEntity.ok(ProjectResponse.from(
+                project, scriptResponse, characters, foreshadows, budgetResponse));
     }
 
     @DeleteMapping("/{projectId}")

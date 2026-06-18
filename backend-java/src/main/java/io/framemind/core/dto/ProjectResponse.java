@@ -1,6 +1,7 @@
 package io.framemind.core.dto;
 
 import io.framemind.core.model.Project;
+import io.framemind.modules.scriptmind.dto.ScriptResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,7 +17,7 @@ public record ProjectResponse(
         int targetEpisodes,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        Object script,
+        ScriptResponse script,
         List<Object> characters,
         List<Object> foreshadows,
         ProjectBudgetResponse budget
@@ -32,10 +33,32 @@ public record ProjectResponse(
                 project.getTargetEpisodes(),
                 project.getCreatedAt(),
                 project.getUpdatedAt(),
-                null, // script loaded separately
-                List.of(), // characters loaded separately
-                List.of(), // foreshadows loaded separately
-                null  // budget loaded separately
+                null,
+                List.of(),
+                List.of(),
+                null
+        );
+    }
+
+    public static ProjectResponse from(Project project,
+                                        ScriptResponse script,
+                                        List<?> characters,
+                                        List<?> foreshadows,
+                                        ProjectBudgetResponse budget) {
+        return new ProjectResponse(
+                project.getId(),
+                project.getTitle(),
+                project.getGenre(),
+                project.getFormat(),
+                project.getDescription(),
+                project.getStatus(),
+                project.getTargetEpisodes(),
+                project.getCreatedAt(),
+                project.getUpdatedAt(),
+                script,
+                List.copyOf(characters),
+                List.copyOf(foreshadows),
+                budget
         );
     }
 

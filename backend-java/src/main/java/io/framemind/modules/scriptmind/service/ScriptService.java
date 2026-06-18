@@ -104,7 +104,20 @@ public class ScriptService {
             throw new IllegalArgumentException("Content must not be null");
         }
 
-        Script script = getScriptOrThrow(projectId);
+        // Upsert: create script if it doesn't exist yet
+        Script script = scriptRepository.findByProjectId(projectId)
+                .orElseGet(() -> {
+                    log.info("Script not found for project {}, creating new one", projectId);
+                    Project project = projectRepository.findById(projectId)
+                            .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
+                    return Script.builder()
+                            .project(project)
+                            .title("Untitled Script")
+                            .content(objectMapper.createObjectNode())
+                            .version(0)
+                            .build();
+                });
+
         script.setContent(content);
         script.setVersion(script.getVersion() + 1);
         recalculateCounts(script);
