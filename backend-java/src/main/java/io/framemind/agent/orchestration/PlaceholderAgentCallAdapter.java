@@ -2,6 +2,7 @@ package io.framemind.agent.orchestration;
 
 import io.framemind.agent.config.AgentDefinition;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.function.Consumer;
@@ -11,11 +12,12 @@ import java.util.function.Consumer;
  * responses. This allows the full pipeline to be wired, tested and demonstrated
  * without a live LLM backend.
  * <p>
- * Replace this with a real AgentScope-Java integration (e.g.
- * {@code AgentScopeReActAdapter}) once the SDK dependency is fully resolved.
+ * Activated when {@code framemind.agent.adapter=placeholder}.
+ * The {@link AgentScopeCallAdapter} is the default.
  */
 @Slf4j
 @Component
+@ConditionalOnProperty(name = "framemind.agent.adapter", havingValue = "placeholder")
 public class PlaceholderAgentCallAdapter implements AgentCallAdapter {
 
     @Override

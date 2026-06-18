@@ -3,45 +3,37 @@ package io.framemind.core.service.impl;
 import io.framemind.core.dto.SettingsRequest;
 import io.framemind.core.dto.SettingsResponse;
 import io.framemind.core.service.ApiKeyService;
+import io.framemind.core.service.ConfigFileStore;
+import io.framemind.core.service.ModelCatalogService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * API key service backed by {@link ConfigFileStore} for persistent storage.
+ * <p>
+ * Reads and writes provider API keys through the config file at
+ * {@code ~/.framemind/config.json}.
+ */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ApiKeyServiceImpl implements ApiKeyService {
 
-    private static final List<String> SUPPORTED_PROVIDERS = List.of(
-            "dashscope", "openai", "anthropic", "deepseek"
-    );
-
-    private final Map<String, String> apiKeyStore = new ConcurrentHashMap<>();
-
-    public ApiKeyServiceImpl(
-            @Value("${framemind.api-keys.dashscope:}") String dashscopeKey,
-            @Value("${framemind.api-keys.openai:}") String openaiKey,
-            @Value("${framemind.api-keys.anthropic:}") String anthropicKey,
-            @Value("${framemind.api-keys.deepseek:}") String deepseekKey
-    ) {
-        if (!dashscopeKey.isBlank()) apiKeyStore.put("dashscope", dashscopeKey);
-        if (!openaiKey.isBlank()) apiKeyStore.put("openai", openaiKey);
-        if (!anthropicKey.isBlank()) apiKeyStore.put("anthropic", anthropicKey);
-        if (!deepseekKey.isBlank()) apiKeyStore.put("deepseek", deepseekKey);
-    }
+    private final ConfigFileStore configStore;
+    private final ModelCatalogService catalogService;
 
     @Override
     public List<SettingsResponse> listApiKeys() {
         List<SettingsResponse> result = new ArrayList<>();
-        for (String provider : SUPPORTED_PROVIDERS) {
-            String key = apiKeyStore.get(provider);
-            boolean configured = key != null && !key.isBlank();
-            String preview = configured ? maskKey(key) : "";
-            result.add(new SettingsResponse(provider, preview, configured));
+        for (String providerId : catalogService.getProviderIds()) {
+            ConfigFileStore.ProviderEntry entry = configStore.getProvider(providerId);
+            boolean configured = entry != null && entry.getApiKey() != null && !entry.getApiKey().isBlank();
+            String preview = configured ? maskKey(entry.getApiKey()) : "";
+            result.add(new SettingsResponse(providerId, preview, configured));
         }
         return result;
     }
@@ -49,14 +41,18 @@ public class ApiKeyServiceImpl implements ApiKeyService {
     @Override
     public SettingsResponse saveApiKey(SettingsRequest request) {
         String provider = request.provider().toLowerCase();
-        apiKeyStore.put(provider, request.apiKey());
+        ConfigFileStore.ProviderEntry existing = configStore.getProvider(provider);
+        if (existing == null) {
+            existing = new ConfigFileStore.ProviderEntry();
+        }
+        existing.setApiKey(request.apiKey());
+        configStore.putProvider(provider, existing);
         log.info("API key updated for provider: {}", provider);
         return new SettingsResponse(provider, maskKey(request.apiKey()), true);
     }
 
     /**
      * Masks the API key, showing only the last 4 characters.
-     * Example: "sk-abc12345def1" -> "sk-...ef1" (if 4 chars: "sk-...f1")
      */
     private String maskKey(String key) {
         if (key == null || key.length() <= 4) {

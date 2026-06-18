@@ -46,6 +46,8 @@ agentscope:
 
 # FrameMind custom config
 framemind:
+  config:
+    path: ${FRAMEMIND_CONFIG_PATH:${user.home}/.framemind}
   encryption:
     key: ${FERNET_KEY:}
   budget:
