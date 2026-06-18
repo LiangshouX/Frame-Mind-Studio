@@ -55,7 +55,12 @@ public class AgentController {
         Project project = getProjectOrThrow(request.projectId());
 
         // Create session record
-        AgentSession session = createSession(project, "outline_generate");
+        ObjectNode inputData = objectMapper.createObjectNode()
+                .put("inputType", request.inputType())
+                .put("inputContent", request.inputContent());
+        if (request.stylePreset() != null) inputData.put("stylePreset", request.stylePreset());
+        if (request.targetEpisodes() != null) inputData.put("targetEpisodes", request.targetEpisodes());
+        AgentSession session = createSession(project, "outline_generate", inputData);
 
         // Trigger pipeline asynchronously
         pipelineOrchestrator.executeOutlineGeneration(
@@ -81,7 +86,10 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> refineScript(@Valid @RequestBody RefineScriptRequest request) {
         Project project = getProjectOrThrow(request.projectId());
 
-        AgentSession session = createSession(project, "script_refine");
+        ObjectNode inputData = objectMapper.createObjectNode()
+                .put("inputType", request.inputType())
+                .put("inputContent", request.inputContent());
+        AgentSession session = createSession(project, "script_refine", inputData);
 
         pipelineOrchestrator.executeScriptRefinement(
                 session.getId().toString(),
@@ -117,7 +125,10 @@ public class AgentController {
             ));
         }
 
-        AgentSession session = createSession(project, "import_file");
+        ObjectNode inputData = objectMapper.createObjectNode()
+                .put("filename", file.getOriginalFilename())
+                .put("size", file.getSize());
+        AgentSession session = createSession(project, "import_file", inputData);
 
         pipelineOrchestrator.executeFileImport(
                 session.getId().toString(),
@@ -141,7 +152,9 @@ public class AgentController {
     public ResponseEntity<Map<String, Object>> importUrl(@Valid @RequestBody ImportUrlRequest request) {
         Project project = getProjectOrThrow(request.projectId());
 
-        AgentSession session = createSession(project, "import_url");
+        ObjectNode inputData = objectMapper.createObjectNode()
+                .put("url", request.url());
+        AgentSession session = createSession(project, "import_url", inputData);
 
         pipelineOrchestrator.executeUrlImport(
                 session.getId().toString(),
@@ -168,7 +181,11 @@ public class AgentController {
         // optimization path. Since the orchestrator is async, we use a session-based approach
         // but return immediately for this simpler operation.
         Project project = getProjectOrThrow(request.projectId());
-        AgentSession session = createSession(project, "optimize_segment");
+        ObjectNode inputData = objectMapper.createObjectNode()
+                .put("text", request.text())
+                .put("elementType", request.elementType() != null ? request.elementType() : "dialogue");
+        if (request.context() != null) inputData.put("context", request.context());
+        AgentSession session = createSession(project, "optimize_segment", inputData);
 
         // Trigger optimization pipeline (it returns a CompletableFuture but we can
         // let it run in the background and return a 202 for consistency)
@@ -251,13 +268,14 @@ public class AgentController {
                 .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
     }
 
-    private AgentSession createSession(Project project, String sessionType) {
+    private AgentSession createSession(Project project, String sessionType, JsonNode inputData) {
         AgentSession session = new AgentSession();
         session.setProject(project);
         session.setProjectId(project.getId());
         session.setSessionType(sessionType);
         session.setStatus("pending");
         session.setTokensConsumed(0);
+        session.setInputData(inputData);
         return agentSessionRepository.save(session);
     }
 

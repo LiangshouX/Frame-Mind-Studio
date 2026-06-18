@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const MODULES = [
-  { id: 'scriptmind', label: '剧本工厂', path: '/scriptmind' },
+  { id: 'workbench', label: '工作台', path: '' },
+  { id: 'outline', label: '大纲', path: '/scriptmind/outline' },
+  { id: 'scriptmind', label: '编辑器', path: '/scriptmind' },
   { id: 'storyboard', label: '分镜', path: '/storyboard', disabled: true },
   { id: 'styleforge', label: '风格', path: '/styleforge', disabled: true },
   { id: 'motioncore', label: '动态', path: '/motioncore', disabled: true },
