@@ -3,7 +3,7 @@ package io.framemind.agent.hook;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.framemind.core.websocket.AgentWebSocketHandler;
+import io.framemind.core.adapter.AgentWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -11,12 +11,12 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Handles streaming agent output to clients via WebSocket.
- * <p>
- * All messages follow the JSON envelope defined in the API contracts:
+ * 流式推送 Hook，负责将 Agent 输出通过 WebSocket 实时推送给客户端。
+ *
+ * <p>所有消息遵循 JSON 信封格式：
  * <pre>
  * {
- *   "type": "&lt;message_type&gt;",
+ *   "type": "&lt;消息类型&gt;",
  *   "data": { ... }
  * }
  * </pre>
@@ -29,9 +29,7 @@ public class StreamingHook {
     private final AgentWebSocketHandler webSocketHandler;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Known stage labels (Chinese) keyed by stage identifier.
-     */
+    /** 已知阶段标识到中文标签的映射。 */
     private static final Map<String, String> STAGE_LABELS = Map.of(
             "showrunner", "主笔编剧",
             "world_builder", "世界观架构师",
@@ -41,11 +39,11 @@ public class StreamingHook {
     );
 
     /**
-     * Notify clients that a pipeline stage has started.
+     * 通知客户端某个流水线阶段已开始。
      *
-     * @param sessionId the agent session id
-     * @param stage     the stage identifier (e.g. "showrunner")
-     * @param status    the stage status (e.g. "started", "completed")
+     * @param sessionId Agent 会话 ID
+     * @param stage     阶段标识（如 "showrunner"）
+     * @param status    阶段状态（如 "started"、"completed"）
      */
     public void onStageStart(String sessionId, String stage, String status) {
         String stageLabel = STAGE_LABELS.getOrDefault(stage, stage);
@@ -63,11 +61,11 @@ public class StreamingHook {
     }
 
     /**
-     * Stream a chunk of agent output to the client.
+     * 向客户端推送一段 Agent 输出流。
      *
-     * @param sessionId the agent session id
-     * @param stage     the producing stage identifier
-     * @param content   the text chunk
+     * @param sessionId Agent 会话 ID
+     * @param stage     产出该内容的阶段标识
+     * @param content   文本片段
      */
     public void onStreamChunk(String sessionId, String stage, String content) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -81,11 +79,11 @@ public class StreamingHook {
     }
 
     /**
-     * Notify clients that the pipeline has completed successfully.
+     * 通知客户端流水线已成功完成。
      *
-     * @param sessionId       the agent session id
-     * @param result          the final output data (will be serialized as JSON)
-     * @param tokensConsumed  total tokens consumed across all stages
+     * @param sessionId      Agent 会话 ID
+     * @param result         最终输出数据（将序列化为 JSON）
+     * @param tokensConsumed 所有阶段消耗的总 token 数
      */
     public void onComplete(String sessionId, Object result, int tokensConsumed) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -101,11 +99,11 @@ public class StreamingHook {
     }
 
     /**
-     * Notify clients that the pipeline encountered an error.
+     * 通知客户端流水线遇到错误。
      *
-     * @param sessionId the agent session id
-     * @param errorCode a machine-readable error code (e.g. "RATE_LIMIT_EXCEEDED")
-     * @param message   a human-readable description
+     * @param sessionId Agent 会话 ID
+     * @param errorCode 机器可读的错误码（如 "RATE_LIMIT_EXCEEDED"）
+     * @param message   人类可读的错误描述
      */
     public void onError(String sessionId, String errorCode, String message) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -121,12 +119,12 @@ public class StreamingHook {
     }
 
     /**
-     * Notify clients that the project is approaching its token budget limit.
+     * 通知客户端项目的 token 预算即将耗尽。
      *
-     * @param sessionId  the agent session id
-     * @param tokensUsed cumulative tokens used for the project
-     * @param tokenLimit the project's hard token limit
-     * @param threshold  the warning threshold ratio (e.g. 0.80)
+     * @param sessionId  Agent 会话 ID
+     * @param tokensUsed 项目累计已使用的 token 数
+     * @param tokenLimit 项目的 token 硬上限
+     * @param threshold  警告阈值比例（如 0.80）
      */
     public void onBudgetWarning(String sessionId, long tokensUsed, long tokenLimit, double threshold) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -144,11 +142,11 @@ public class StreamingHook {
     }
 
     /**
-     * Notify clients that a human-in-the-loop review is required.
+     * 通知客户端需要进行人工审核（HITL）。
      *
-     * @param sessionId the agent session id
-     * @param content   the content to be reviewed
-     * @param options   available review actions
+     * @param sessionId Agent 会话 ID
+     * @param content   待审核的内容
+     * @param options   可选的审核动作
      */
     public void onHitlPrompt(String sessionId, String content, String... options) {
         ObjectNode root = objectMapper.createObjectNode();

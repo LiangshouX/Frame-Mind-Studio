@@ -2,15 +2,12 @@ package io.framemind.agent.orchestration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.framemind.agent.config.AgentDefinition;
 import io.framemind.agent.hook.BudgetHook;
 import io.framemind.agent.hook.StreamingHook;
-import io.framemind.core.model.AgentSession;
-import io.framemind.core.model.Project;
-import io.framemind.core.repository.AgentSessionRepository;
-import io.framemind.core.repository.ProjectRepository;
+import io.framemind.infrastructure.repository.AgentSessionRepository;
+import io.framemind.infrastructure.repository.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;

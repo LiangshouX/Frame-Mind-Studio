@@ -1,14 +1,13 @@
 package io.framemind.agent.hook;
 
 import io.framemind.core.exception.BudgetExceededException;
-import io.framemind.core.model.ProjectBudget;
-import io.framemind.core.repository.ProjectBudgetRepository;
+import io.framemind.infrastructure.po.ProjectBudgetPO;
+import io.framemind.infrastructure.repository.ProjectBudgetRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,12 +34,12 @@ public class BudgetHook {
      */
     @Transactional(readOnly = true)
     public boolean checkBudget(UUID projectId) {
-        Optional<ProjectBudget> budgetOpt = budgetRepository.findByProjectId(projectId);
+        Optional<ProjectBudgetPO> budgetOpt = budgetRepository.findByProjectId(projectId);
         if (budgetOpt.isEmpty()) {
             // No budget record means unlimited budget (e.g. newly created project)
             return true;
         }
-        ProjectBudget budget = budgetOpt.get();
+        ProjectBudgetPO budget = budgetOpt.get();
         return budget.getTokensUsed() < budget.getTokenLimit();
     }
 
@@ -58,13 +57,13 @@ public class BudgetHook {
      */
     @Transactional
     public void consumeTokens(UUID projectId, int tokens, String sessionId) {
-        Optional<ProjectBudget> budgetOpt = budgetRepository.findByProjectId(projectId);
+        Optional<ProjectBudgetPO> budgetOpt = budgetRepository.findByProjectId(projectId);
         if (budgetOpt.isEmpty()) {
             log.debug("No budget record for project {}; skipping budget check", projectId);
             return;
         }
 
-        ProjectBudget budget = budgetOpt.get();
+        ProjectBudgetPO budget = budgetOpt.get();
         long previousUsed = budget.getTokensUsed();
         long newUsed = previousUsed + tokens;
         long limit = budget.getTokenLimit();
@@ -100,12 +99,12 @@ public class BudgetHook {
      */
     @Transactional
     public void consumeTokens(UUID projectId, int tokens) {
-        Optional<ProjectBudget> budgetOpt = budgetRepository.findByProjectId(projectId);
+        Optional<ProjectBudgetPO> budgetOpt = budgetRepository.findByProjectId(projectId);
         if (budgetOpt.isEmpty()) {
             return;
         }
 
-        ProjectBudget budget = budgetOpt.get();
+        ProjectBudgetPO budget = budgetOpt.get();
         long newUsed = budget.getTokensUsed() + tokens;
         budget.setTokensUsed(newUsed);
         budgetRepository.save(budget);

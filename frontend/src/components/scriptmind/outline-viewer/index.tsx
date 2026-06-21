@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, FileText, RefreshCw, Loader2 } from 'lucide-react'
-import { ScriptContent } from '@/types/script'
+import { ScriptContent, TraditionalScriptContent } from '@/types/script'
+
+type OutlineContent = ScriptContent | TraditionalScriptContent
 
 interface OutlineViewerProps {
-  content: ScriptContent | null | undefined
+  content: OutlineContent | null | undefined
   onRefine?: () => void
   loading?: boolean
   error?: string | null
@@ -49,41 +51,84 @@ export function OutlineViewer({ content, onRefine, loading, error, onRetry }: Ou
     )
   }
 
+  // 判断是微短剧模型还是传统影视模型
+  const isShortDrama = 'episodes' in content
+  const isTraditional = 'acts' in content
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="font-display text-2xl font-bold text-[var(--text-primary)]">{content.title}</h3>
         {onRefine && <button onClick={onRefine} className="btn btn-primary flex items-center gap-2"><FileText className="h-5 w-5" /> 细化为剧本</button>}
       </div>
-      <div className="text-base text-[var(--text-secondary)]">共 {content.totalEpisodes} 集</div>
-
-      <div className="space-y-3">
-        {content.episodes.map((ep) => (
-          <div key={ep.episodeNumber} className="border border-[var(--border)] rounded-xl overflow-hidden">
-            <button onClick={() => toggle(ep.episodeNumber)} className="w-full flex items-center gap-4 px-5 py-4 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] transition-colors text-left">
-              {expanded.has(ep.episodeNumber) ? <ChevronDown className="h-5 w-5 text-[var(--text-muted)]" /> : <ChevronRight className="h-5 w-5 text-[var(--text-muted)]" />}
-              <span className="font-mono text-sm text-[var(--accent)] font-bold">第{ep.episodeNumber}集</span>
-              <span className="text-base font-bold flex-1 text-[var(--text-primary)]">{ep.title}</span>
-              <span className="text-sm text-[var(--text-muted)]">{ep.durationMinutes}分钟</span>
-            </button>
-            {expanded.has(ep.episodeNumber) && (
-              <div className="px-5 py-4 border-t border-[var(--border)] space-y-3">
-                {ep.scenes.map((scene) => (
-                  <div key={scene.sceneId} className="pl-5 border-l-2 border-[var(--accent)]/30">
-                    <div className="text-sm text-[var(--text-muted)] mb-2">{scene.sceneId} · {scene.location} · {scene.time}</div>
-                    {scene.beats.map((beat) => (
-                      <div key={beat.beatId} className="text-base text-[var(--text-secondary)] py-1 leading-relaxed">
-                        {beat.type === 'dialogue' && beat.character && <span className="font-bold text-[var(--text-primary)]">{beat.character}: </span>}
-                        {beat.content}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+      <div className="text-base text-[var(--text-secondary)]">
+        {isShortDrama ? `共 ${(content as ScriptContent).totalEpisodes} 集` : `结构模型: ${(content as TraditionalScriptContent).structureModel}`}
       </div>
+
+      {/* 微短剧模型渲染 */}
+      {isShortDrama && (
+        <div className="space-y-3">
+          {(content as ScriptContent).episodes.map((ep) => (
+            <div key={ep.episodeNumber} className="border border-[var(--border)] rounded-xl overflow-hidden">
+              <button onClick={() => toggle(ep.episodeNumber)} className="w-full flex items-center gap-4 px-5 py-4 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] transition-colors text-left">
+                {expanded.has(ep.episodeNumber) ? <ChevronDown className="h-5 w-5 text-[var(--text-muted)]" /> : <ChevronRight className="h-5 w-5 text-[var(--text-muted)]" />}
+                <span className="font-mono text-sm text-[var(--accent)] font-bold">第{ep.episodeNumber}集</span>
+                <span className="text-base font-bold flex-1 text-[var(--text-primary)]">{ep.title}</span>
+                <span className="text-sm text-[var(--text-muted)]">{ep.durationMinutes}分钟</span>
+              </button>
+              {expanded.has(ep.episodeNumber) && (
+                <div className="px-5 py-4 border-t border-[var(--border)] space-y-3">
+                  {ep.scenes.map((scene) => (
+                    <div key={scene.sceneId} className="pl-5 border-l-2 border-[var(--accent)]/30">
+                      <div className="text-sm text-[var(--text-muted)] mb-2">{scene.sceneId} · {scene.location} · {scene.time}</div>
+                      {scene.beats.map((beat) => (
+                        <div key={beat.beatId} className="text-base text-[var(--text-secondary)] py-1 leading-relaxed">
+                          {beat.type === 'dialogue' && beat.character && <span className="font-bold text-[var(--text-primary)]">{beat.character}: </span>}
+                          {beat.content}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 传统影视模型渲染 */}
+      {isTraditional && (
+        <div className="space-y-4">
+          {(content as TraditionalScriptContent).acts.map((act) => (
+            <div key={act.actNumber} className="border border-[var(--border)] rounded-xl overflow-hidden">
+              <button onClick={() => toggle(act.actNumber)} className="w-full flex items-center gap-4 px-5 py-4 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] transition-colors text-left">
+                {expanded.has(act.actNumber) ? <ChevronDown className="h-5 w-5 text-[var(--text-muted)]" /> : <ChevronRight className="h-5 w-5 text-[var(--text-muted)]" />}
+                <span className="font-mono text-sm text-[var(--accent)] font-bold">第{act.actNumber}幕</span>
+                <span className="text-base font-bold flex-1 text-[var(--text-primary)]">{act.actName}</span>
+                <span className="text-sm text-[var(--text-muted)]">{act.actGoal}</span>
+              </button>
+              {expanded.has(act.actNumber) && (
+                <div className="px-5 py-4 border-t border-[var(--border)] space-y-4">
+                  {act.sequences.map((seq) => (
+                    <div key={seq.sequenceId} className="pl-4 border-l-2 border-[var(--accent)]/30">
+                      <div className="text-sm font-bold text-[var(--text-primary)] mb-2">{seq.sequenceName}</div>
+                      <div className="text-xs text-[var(--text-muted)] mb-3">情节转折点: {seq.plotPoint}</div>
+                      <div className="space-y-2">
+                        {seq.scenes.map((scene) => (
+                          <div key={scene.sceneId} className="pl-4 border-l border-[var(--border)]">
+                            <div className="text-sm text-[var(--text-muted)] mb-1">{scene.slugline}</div>
+                            {scene.sceneObjective && <div className="text-sm text-[var(--text-secondary)]">{scene.sceneObjective}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

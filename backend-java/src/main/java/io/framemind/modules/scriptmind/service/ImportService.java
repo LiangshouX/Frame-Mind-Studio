@@ -25,6 +25,10 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 导入服务，负责解析和导入各种格式的剧本文件（TXT、DOCX、Markdown、Fountain），
+ * 以及从 URL 抓取文本内容。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -46,10 +50,14 @@ public class ImportService {
 
     private final ObjectMapper objectMapper;
 
-    // ─── File Parsing ───────────────────────────────────────────────
+    // ─── 文件解析 ───────────────────────────────────────────────────
 
     /**
-     * Parse a plain text file, detecting encoding and splitting by chapter/section markers.
+     * 解析纯文本文件，自动检测编码并按章节/节标记拆分。
+     *
+     * @param content  文件字节内容
+     * @param filename 文件名
+     * @return 解析后的 JSON 结构
      */
     public JsonNode parseTxtFile(byte[] content, String filename) {
         if (content == null || content.length == 0) {
@@ -60,8 +68,11 @@ public class ImportService {
     }
 
     /**
-     * Parse a DOCX file. Uses basic XML extraction from the DOCX zip structure.
-     * Falls back to raw text if parsing fails.
+     * 解析 DOCX 文件。通过基本的 XML 提取从 DOCX 压缩结构中获取文本。
+     * 解析失败时回退为原始文本。
+     *
+     * @param content 文件字节内容
+     * @return 解析后的 JSON 结构
      */
     public JsonNode parseDocxFile(byte[] content) {
         if (content == null || content.length == 0) {
@@ -78,7 +89,10 @@ public class ImportService {
     }
 
     /**
-     * Parse a Markdown file, using heading structure as episode/scene boundaries.
+     * 解析 Markdown 文件，使用标题结构作为集数/场景边界。
+     *
+     * @param content 文件字节内容
+     * @return 解析后的 JSON 结构
      */
     public JsonNode parseMarkdownFile(byte[] content) {
         if (content == null || content.length == 0) {
@@ -105,14 +119,14 @@ public class ImportService {
                 int level = headingMatcher.group(1).length();
                 String headingText = headingMatcher.group(2).trim();
 
-                // Flush pending content
+                // 刷新待处理内容
                 if (currentContent.length() > 0 && currentScene != null) {
                     addContentAsBeat(currentScene, currentContent.toString());
                     currentContent.setLength(0);
                 }
 
                 if (level <= 2) {
-                    // Level 1-2 headings = episode boundaries
+                    // 1-2 级标题 = 集数边界
                     episodeNum++;
                     currentEpisode = objectMapper.createObjectNode();
                     currentEpisode.put("episodeNumber", episodeNum);
@@ -122,7 +136,7 @@ public class ImportService {
                     episodes.add(currentEpisode);
                     currentScene = null;
                 } else if (level <= 4 && currentEpisode != null) {
-                    // Level 3-4 headings = scene boundaries
+                    // 3-4 级标题 = 场景边界
                     sceneNum++;
                     currentScene = objectMapper.createObjectNode();
                     currentScene.put("sceneId", "scene_" + sceneNum);
@@ -138,7 +152,7 @@ public class ImportService {
             }
         }
 
-        // Flush remaining content
+        // 刷新剩余内容
         if (currentContent.length() > 0 && currentScene != null) {
             addContentAsBeat(currentScene, currentContent.toString());
         }
@@ -150,8 +164,11 @@ public class ImportService {
     }
 
     /**
-     * Parse a Fountain screenplay format file.
-     * Handles: Title, Scene Headings, Action, Dialogue, Parenthetical, Transitions.
+     * 解析 Fountain 剧本格式文件。
+     * 支持：标题页、场景标题、动作、对白、括号注释、转场。
+     *
+     * @param content 文件字节内容
+     * @return 解析后的 JSON 结构
      */
     public JsonNode parseFountainFile(byte[] content) {
         if (content == null || content.length == 0) {
@@ -163,7 +180,7 @@ public class ImportService {
         ObjectNode result = objectMapper.createObjectNode();
         ArrayNode episodes = objectMapper.createArrayNode();
 
-        // Fountain uses a single episode/act structure by default
+        // Fountain 默认使用单集/幕结构
         ObjectNode episode = objectMapper.createObjectNode();
         episode.put("episodeNumber", 1);
         episode.put("title", "Imported Fountain");
@@ -183,7 +200,7 @@ public class ImportService {
             String trimmed = line.trim();
 
             if (trimmed.isEmpty()) {
-                // Blank line: flush buffers
+                // 空行：刷新缓冲区
                 if (!inDialogue && actionBuffer.length() > 0) {
                     if (currentScene == null) {
                         currentScene = createDefaultScene(++sceneNum);
@@ -196,7 +213,7 @@ public class ImportService {
                 continue;
             }
 
-            // Title page (at start of document, before first content)
+            // 标题页（文档开头，首个内容之前）
             if (i < 20 && trimmed.startsWith("Title:")) {
                 String titleVal = trimmed.substring("Title:".length()).trim();
                 episode.put("title", titleVal);
@@ -204,7 +221,7 @@ public class ImportService {
                 continue;
             }
 
-            // Scene heading
+            // 场景标题
             if (SCENE_HEADING_FOUNTAIN.matcher(trimmed).matches()) {
                 if (actionBuffer.length() > 0 && currentScene != null) {
                     addBeat(currentScene, "action", actionBuffer.toString().trim(), null, null);
@@ -217,7 +234,7 @@ public class ImportService {
                 continue;
             }
 
-            // Transition
+            // 转场
             if (FOUNTAIN_TRANSITION.matcher(trimmed).matches()) {
                 if (currentScene == null) {
                     currentScene = createDefaultScene(++sceneNum);
@@ -227,7 +244,7 @@ public class ImportService {
                 continue;
             }
 
-            // Character name (ALL CAPS followed by dialogue)
+            // 角色名（全大写，后跟对白）
             if (trimmed.equals(trimmed.toUpperCase()) && trimmed.length() > 1
                     && !trimmed.startsWith("!") && !trimmed.startsWith("=")
                     && i + 1 < lines.length && !lines[i + 1].trim().isEmpty()) {
@@ -236,7 +253,7 @@ public class ImportService {
                 continue;
             }
 
-            // Parenthetical
+            // 括号注释
             if (inDialogue && trimmed.startsWith("(") && trimmed.endsWith(")")) {
                 if (currentScene == null) {
                     currentScene = createDefaultScene(++sceneNum);
@@ -246,7 +263,7 @@ public class ImportService {
                 continue;
             }
 
-            // Dialogue
+            // 对白
             if (inDialogue && currentCharacter != null) {
                 if (currentScene == null) {
                     currentScene = createDefaultScene(++sceneNum);
@@ -256,7 +273,7 @@ public class ImportService {
                 continue;
             }
 
-            // Action (default)
+            // 动作（默认）
             if (currentScene == null) {
                 currentScene = createDefaultScene(++sceneNum);
                 ((ArrayNode) episode.get("scenes")).add(currentScene);
@@ -264,7 +281,7 @@ public class ImportService {
             actionBuffer.append(trimmed).append(" ");
         }
 
-        // Flush remaining
+        // 刷新剩余内容
         if (actionBuffer.length() > 0 && currentScene != null) {
             addBeat(currentScene, "action", actionBuffer.toString().trim(), null, null);
         }
@@ -277,11 +294,14 @@ public class ImportService {
         return result;
     }
 
-    // ─── URL Fetching ───────────────────────────────────────────────
+    // ─── URL 抓取 ───────────────────────────────────────────────────
 
     /**
-     * Fetch and extract main text content from a URL.
-     * Strips HTML tags and returns plain text.
+     * 从 URL 抓取并提取主要文本内容。去除 HTML 标签后返回纯文本。
+     *
+     * @param url 目标 URL
+     * @return 提取的纯文本内容
+     * @throws IllegalArgumentException URL 为空或格式无效时抛出
      */
     public String fetchUrlContent(String url) {
         if (url == null || url.isBlank()) {
@@ -318,7 +338,11 @@ public class ImportService {
     }
 
     /**
-     * Validate file size does not exceed 500,000 characters.
+     * 验证文件大小不超过 500,000 个字符。
+     *
+     * @param content 文件字节内容
+     * @return 验证通过返回 true
+     * @throws IllegalArgumentException 内容超过限制时抛出
      */
     public boolean validateFileSize(byte[] content) {
         if (content == null) return true;
@@ -327,7 +351,7 @@ public class ImportService {
         return true;
     }
 
-    // ─── Private Helpers ────────────────────────────────────────────
+    // ─── 私有辅助方法 ────────────────────────────────────────────────
 
     private void validateFileSize(String text) {
         if (text.length() > MAX_CHAR_LIMIT) {
@@ -337,7 +361,7 @@ public class ImportService {
     }
 
     private String detectAndDecode(byte[] content) {
-        // Simple charset detection: check for BOM, then try UTF-8, fall back to platform default
+        // 简单的字符集检测：先检查 BOM，然后尝试 UTF-8，最后回退到平台默认编码
         if (content.length >= 3 && content[0] == (byte) 0xEF && content[1] == (byte) 0xBB && content[2] == (byte) 0xBF) {
             // UTF-8 BOM
             validateAndReturn(content, StandardCharsets.UTF_8);
@@ -350,32 +374,32 @@ public class ImportService {
             return new String(content, 2, content.length - 2, StandardCharsets.UTF_16BE);
         }
 
-        // Try UTF-8 first
+        // 优先尝试 UTF-8
         String utf8 = new String(content, StandardCharsets.UTF_8);
         if (!containsReplacementChars(utf8)) {
             validateFileSize(utf8);
             return utf8;
         }
 
-        // Fall back to GBK for Chinese content
+        // 回退到 GBK（适用于中文内容）
         try {
             String gbk = new String(content, Charset.forName("GBK"));
             validateFileSize(gbk);
             return gbk;
         } catch (Exception e) {
-            // Final fallback
+            // 最终回退
             validateFileSize(utf8);
             return utf8;
         }
     }
 
     private boolean containsReplacementChars(String text) {
-        // Check for Unicode replacement character which indicates encoding issues
+        // 检查 Unicode 替换字符，表示编码问题
         int replacementCount = 0;
         for (int i = 0; i < text.length(); i++) {
             if (text.charAt(i) == '�') replacementCount++;
         }
-        return replacementCount > text.length() * 0.01; // More than 1% replacement chars
+        return replacementCount > text.length() * 0.01; // 超过 1% 替换字符
     }
 
     private void validateAndReturn(byte[] content, Charset charset) {
@@ -396,7 +420,7 @@ public class ImportService {
         int sceneNum = 0;
         StringBuilder currentContent = new StringBuilder();
 
-        // Determine episode marker pattern from content
+        // 根据内容确定集数标记模式
         Pattern episodePattern = Pattern.compile(
                 "^\\s*(?:第\\s*(\\d+)\\s*[章集]|Chapter\\s+(\\d+)|EP\\s*(\\d+)|#{1,2}\\s+.*(?:第|集|Chapter))",
                 Pattern.CASE_INSENSITIVE
@@ -414,7 +438,7 @@ public class ImportService {
 
             Matcher epMatcher = episodePattern.matcher(trimmed);
             if (epMatcher.find()) {
-                // Flush pending
+                // 刷新待处理内容
                 if (currentContent.length() > 0 && currentScene != null) {
                     addContentAsBeat(currentScene, currentContent.toString());
                     currentContent.setLength(0);
@@ -449,7 +473,7 @@ public class ImportService {
             currentContent.append(trimmed).append("\n");
         }
 
-        // Flush remaining
+        // 刷新剩余内容
         if (currentContent.length() > 0 && currentScene != null) {
             addContentAsBeat(currentScene, currentContent.toString());
         }
@@ -461,7 +485,7 @@ public class ImportService {
     }
 
     private String extractTextFromDocx(byte[] content) throws IOException {
-        // Basic DOCX text extraction by reading the word/document.xml inside the zip
+        // 通过读取 ZIP 结构中的 word/document.xml 进行基本的 DOCX 文本提取
         try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new ByteArrayInputStream(content))) {
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
@@ -475,7 +499,7 @@ public class ImportService {
     }
 
     private String stripXmlTags(String xml) {
-        // Remove XML tags and decode common entities
+        // 去除 XML 标签并解码常见实体
         String text = xml.replaceAll("<[^>]+>", " ");
         text = text.replace("&amp;", "&")
                 .replace("&lt;", "<")
@@ -483,17 +507,17 @@ public class ImportService {
                 .replace("&quot;", "\"")
                 .replace("&apos;", "'")
                 .replace("&#x20;", " ");
-        // Collapse whitespace
+        // 合并空白字符
         text = text.replaceAll("\\s+", " ").trim();
         return text;
     }
 
     private String stripHtmlTags(String html) {
-        // Remove script and style blocks
+        // 移除 script 和 style 块
         String text = html.replaceAll("(?is)<(script|style)[^>]*>.*?</\\1>", " ");
-        // Remove HTML tags
+        // 移除 HTML 标签
         text = text.replaceAll("<[^>]+>", " ");
-        // Decode common HTML entities
+        // 解码常见 HTML 实体
         text = text.replace("&nbsp;", " ")
                 .replace("&amp;", "&")
                 .replace("&lt;", "<")
@@ -501,9 +525,9 @@ public class ImportService {
                 .replace("&quot;", "\"")
                 .replace("&apos;", "'")
                 .replace("&#39;", "'");
-        // Collapse whitespace
+        // 合并空白字符
         text = text.replaceAll("[ \\t]+", " ");
-        // Collapse multiple blank lines
+        // 合并多个空行
         text = text.replaceAll("(\\s*\\n\\s*){3,}", "\n\n");
         return text.trim();
     }

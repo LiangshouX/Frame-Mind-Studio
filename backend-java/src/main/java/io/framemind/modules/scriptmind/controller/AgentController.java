@@ -1,13 +1,10 @@
 package io.framemind.modules.scriptmind.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.framemind.agent.orchestration.PipelineOrchestrator;
-import io.framemind.core.model.AgentSession;
-import io.framemind.core.model.Project;
-import io.framemind.core.repository.AgentSessionRepository;
-import io.framemind.core.repository.ProjectRepository;
+import io.framemind.infrastructure.po.AgentSessionPO;
+import io.framemind.infrastructure.po.ProjectPO;
 import io.framemind.modules.scriptmind.dto.AgentSessionResponse;
 import io.framemind.modules.scriptmind.dto.ImportUrlRequest;
 import io.framemind.modules.scriptmind.dto.OptimizeSegmentRequest;
@@ -15,7 +12,7 @@ import io.framemind.modules.scriptmind.dto.OptimizeSegmentResponse;
 import io.framemind.modules.scriptmind.dto.OutlineRequest;
 import io.framemind.modules.scriptmind.dto.RefineScriptRequest;
 import io.framemind.modules.scriptmind.dto.ReviewRequest;
-import jakarta.persistence.EntityNotFoundException;
+import io.framemind.modules.scriptmind.service.AgentSessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,11 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.net.URI;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
+/**
+ * Agent 控制器，提供 AI Agent 相关的异步任务接口。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/agent")
@@ -42,27 +40,26 @@ import java.util.concurrent.CompletableFuture;
 public class AgentController {
 
     private final PipelineOrchestrator pipelineOrchestrator;
-    private final AgentSessionRepository agentSessionRepository;
-    private final ProjectRepository projectRepository;
+    private final AgentSessionService agentSessionService;
     private final ObjectMapper objectMapper;
 
     /**
-     * POST /api/v1/agent/generate-outline
-     * Generate a structured outline from creative input. Returns 202 with session info.
+     * 生成结构化大纲。返回 202 及会话信息。
+     *
+     * @param request 大纲生成请求
+     * @return 会话 ID 和 WebSocket 连接信息
      */
     @PostMapping("/generate-outline")
     public ResponseEntity<Map<String, Object>> generateOutline(@Valid @RequestBody OutlineRequest request) {
-        Project project = getProjectOrThrow(request.projectId());
+        ProjectPO project = agentSessionService.getProjectOrThrow(request.projectId());
 
-        // Create session record
         ObjectNode inputData = objectMapper.createObjectNode()
                 .put("inputType", request.inputType())
                 .put("inputContent", request.inputContent());
         if (request.stylePreset() != null) inputData.put("stylePreset", request.stylePreset());
         if (request.targetEpisodes() != null) inputData.put("targetEpisodes", request.targetEpisodes());
-        AgentSession session = createSession(project, "outline_generate", inputData);
+        AgentSessionPO session = agentSessionService.createSession(project, "outline_generate", inputData);
 
-        // Trigger pipeline asynchronously
         pipelineOrchestrator.executeOutlineGeneration(
                 session.getId().toString(),
                 request.projectId(),
@@ -79,17 +76,19 @@ public class AgentController {
     }
 
     /**
-     * POST /api/v1/agent/refine-script
-     * Refine an existing script from outline. Returns 202 with session info.
+     * 从大纲精修剧本。返回 202 及会话信息。
+     *
+     * @param request 剧本精修请求
+     * @return 会话 ID 和 WebSocket 连接信息
      */
     @PostMapping("/refine-script")
     public ResponseEntity<Map<String, Object>> refineScript(@Valid @RequestBody RefineScriptRequest request) {
-        Project project = getProjectOrThrow(request.projectId());
+        ProjectPO project = agentSessionService.getProjectOrThrow(request.projectId());
 
         ObjectNode inputData = objectMapper.createObjectNode()
                 .put("inputType", request.inputType())
                 .put("inputContent", request.inputContent());
-        AgentSession session = createSession(project, "script_refine", inputData);
+        AgentSessionPO session = agentSessionService.createSession(project, "script_refine", inputData);
 
         pipelineOrchestrator.executeScriptRefinement(
                 session.getId().toString(),
@@ -105,21 +104,24 @@ public class AgentController {
     }
 
     /**
-     * POST /api/v1/agent/import-file
-     * Import a file and convert to screenplay format. Returns 202 with session info.
+     * 导入文件并转换为剧本格式。返回 202 及会话信息。
+     *
+     * @param file      上传的文件
+     * @param projectId 项目 ID
+     * @return 会话 ID 和 WebSocket 连接信息
      */
     @PostMapping("/import-file")
     public ResponseEntity<Map<String, Object>> importFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") UUID projectId) {
 
-        Project project = getProjectOrThrow(projectId);
+        ProjectPO project = agentSessionService.getProjectOrThrow(projectId);
 
         String fileContent;
         try {
             fileContent = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
         } catch (IOException e) {
-            log.error("Failed to read uploaded file", e);
+            log.error("读取上传文件失败", e);
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Failed to read uploaded file: " + e.getMessage()
             ));
@@ -128,7 +130,7 @@ public class AgentController {
         ObjectNode inputData = objectMapper.createObjectNode()
                 .put("filename", file.getOriginalFilename())
                 .put("size", file.getSize());
-        AgentSession session = createSession(project, "import_file", inputData);
+        AgentSessionPO session = agentSessionService.createSession(project, "import_file", inputData);
 
         pipelineOrchestrator.executeFileImport(
                 session.getId().toString(),
@@ -145,16 +147,18 @@ public class AgentController {
     }
 
     /**
-     * POST /api/v1/agent/import-url
-     * Import content from a URL and convert to screenplay format. Returns 202 with session info.
+     * 从 URL 导入内容并转换为剧本格式。返回 202 及会话信息。
+     *
+     * @param request URL 导入请求
+     * @return 会话 ID 和 WebSocket 连接信息
      */
     @PostMapping("/import-url")
     public ResponseEntity<Map<String, Object>> importUrl(@Valid @RequestBody ImportUrlRequest request) {
-        Project project = getProjectOrThrow(request.projectId());
+        ProjectPO project = agentSessionService.getProjectOrThrow(request.projectId());
 
         ObjectNode inputData = objectMapper.createObjectNode()
                 .put("url", request.url());
-        AgentSession session = createSession(project, "import_url", inputData);
+        AgentSessionPO session = agentSessionService.createSession(project, "import_url", inputData);
 
         pipelineOrchestrator.executeUrlImport(
                 session.getId().toString(),
@@ -170,25 +174,22 @@ public class AgentController {
     }
 
     /**
-     * POST /api/v1/agent/optimize-segment
-     * Optimize a specific script segment. Runs synchronously, returns alternatives.
+     * 优化指定的剧本片段。异步执行，返回会话信息。
+     *
+     * @param request 片段优化请求
+     * @return 优化响应
      */
     @PostMapping("/optimize-segment")
     public ResponseEntity<OptimizeSegmentResponse> optimizeSegment(
             @Valid @RequestBody OptimizeSegmentRequest request) {
 
-        // For synchronous optimization, we create a session and run via the orchestrator's
-        // optimization path. Since the orchestrator is async, we use a session-based approach
-        // but return immediately for this simpler operation.
-        Project project = getProjectOrThrow(request.projectId());
+        ProjectPO project = agentSessionService.getProjectOrThrow(request.projectId());
         ObjectNode inputData = objectMapper.createObjectNode()
                 .put("text", request.text())
                 .put("elementType", request.elementType() != null ? request.elementType() : "dialogue");
         if (request.context() != null) inputData.put("context", request.context());
-        AgentSession session = createSession(project, "optimize_segment", inputData);
+        AgentSessionPO session = agentSessionService.createSession(project, "optimize_segment", inputData);
 
-        // Trigger optimization pipeline (it returns a CompletableFuture but we can
-        // let it run in the background and return a 202 for consistency)
         pipelineOrchestrator.executeOptimization(
                 session.getId().toString(),
                 request.projectId(),
@@ -197,8 +198,6 @@ public class AgentController {
                 request.context()
         );
 
-        // For segment optimization, return 200 with session info for polling
-        // The actual alternatives will be available in the session output once complete
         return ResponseEntity.accepted().body(new OptimizeSegmentResponse(
                 java.util.List.of(new OptimizeSegmentResponse.Alternative(
                         request.text(),
@@ -209,85 +208,36 @@ public class AgentController {
     }
 
     /**
-     * GET /api/v1/agent/sessions/{sessionId}
-     * Get the status and result of an agent session.
+     * 查询 Agent 会话状态和结果。
+     *
+     * @param sessionId 会话 ID
+     * @return 会话信息
      */
     @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<AgentSessionResponse> getSession(@PathVariable UUID sessionId) {
-        return agentSessionRepository.findById(sessionId)
-                .map(this::toSessionResponse)
+        return agentSessionService.getSession(sessionId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     /**
-     * POST /api/v1/agent/sessions/{sessionId}/review
-     * Submit a human-in-the-loop review for a session.
+     * 提交 HITL（Human-In-The-Loop）审核。
+     *
+     * @param sessionId 会话 ID
+     * @param request   审核请求
+     * @return 审核结果
      */
     @PostMapping("/sessions/{sessionId}/review")
     public ResponseEntity<Map<String, Object>> submitReview(
             @PathVariable UUID sessionId,
             @Valid @RequestBody ReviewRequest request) {
 
-        AgentSession session = agentSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new EntityNotFoundException("Session not found: " + sessionId));
-
-        // Store the review action in the session's output data
-        ObjectNode reviewData = objectMapper.createObjectNode();
-        reviewData.put("review_action", request.action());
-        if (request.feedback() != null) {
-            reviewData.put("feedback", request.feedback());
-        }
-
-        // Update session output with review info
-        JsonNode existingOutput = session.getOutputData();
-        ObjectNode updatedOutput;
-        if (existingOutput != null && existingOutput.isObject()) {
-            updatedOutput = (ObjectNode) existingOutput.deepCopy();
-        } else {
-            updatedOutput = objectMapper.createObjectNode();
-        }
-        updatedOutput.set("human_review", reviewData);
-        session.setOutputData(updatedOutput);
-        session.setStatus("completed");
-        agentSessionRepository.save(session);
-
-        log.info("HITL review submitted for session {}: action={}", sessionId, request.action());
+        agentSessionService.submitReview(sessionId, request.action(), request.feedback());
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId.toString(),
                 "action", request.action(),
                 "status", "reviewed"
         ));
-    }
-
-    // ─── Private Helpers ────────────────────────────────────────────
-
-    private Project getProjectOrThrow(UUID projectId) {
-        return projectRepository.findById(projectId)
-                .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
-    }
-
-    private AgentSession createSession(Project project, String sessionType, JsonNode inputData) {
-        AgentSession session = new AgentSession();
-        session.setProject(project);
-        session.setProjectId(project.getId());
-        session.setSessionType(sessionType);
-        session.setStatus("pending");
-        session.setTokensConsumed(0);
-        session.setInputData(inputData);
-        return agentSessionRepository.save(session);
-    }
-
-    private AgentSessionResponse toSessionResponse(AgentSession session) {
-        return new AgentSessionResponse(
-                session.getId(),
-                session.getSessionType(),
-                session.getStatus(),
-                session.getTokensConsumed(),
-                session.getStartedAt(),
-                session.getCompletedAt(),
-                session.getOutputData()
-        );
     }
 }

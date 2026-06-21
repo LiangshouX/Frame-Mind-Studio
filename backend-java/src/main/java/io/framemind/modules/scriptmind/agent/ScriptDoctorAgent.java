@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.framemind.agent.config.AgentDefinition;
 import io.framemind.agent.orchestration.AgentCallAdapter;
 import io.framemind.modules.scriptmind.dto.OptimizeSegmentResponse;
-import io.framemind.modules.scriptmind.model.Foreshadow;
+import io.framemind.modules.scriptmind.po.ForeshadowPO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -34,7 +34,7 @@ public class ScriptDoctorAgent {
      * @param onChunk       streaming callback for partial output
      * @return a JsonNode containing the review report
      */
-    public JsonNode reviewScript(JsonNode scriptContent, List<Foreshadow> foreshadows,
+    public JsonNode reviewScript(JsonNode scriptContent, List<ForeshadowPO> foreshadows,
                                   Consumer<String> onChunk) {
         log.info("ScriptDoctorAgent reviewing script, foreshadows={}", foreshadows.size());
 
@@ -90,11 +90,11 @@ public class ScriptDoctorAgent {
 
     // ─── Prompt Builders ────────────────────────────────────────────
 
-    private String buildReviewPrompt(JsonNode scriptContent, List<Foreshadow> foreshadows) {
+    private String buildReviewPrompt(JsonNode scriptContent, List<ForeshadowPO> foreshadows) {
         StringBuilder foreshadowInfo = new StringBuilder();
         if (!foreshadows.isEmpty()) {
             foreshadowInfo.append("\n## 伏笔列表\n");
-            for (Foreshadow f : foreshadows) {
+            for (ForeshadowPO f : foreshadows) {
                 foreshadowInfo.append(String.format("- [%s] %s (提示集数: %s, 紧急度: %s)\n",
                         f.getStatus(),
                         f.getPlant(),

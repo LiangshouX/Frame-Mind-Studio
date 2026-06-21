@@ -1,11 +1,11 @@
 package io.framemind.modules.scriptmind.service;
 
-import io.framemind.core.model.Project;
-import io.framemind.core.repository.ProjectRepository;
+import io.framemind.infrastructure.po.ProjectPO;
+import io.framemind.infrastructure.repository.ProjectRepository;
 import io.framemind.modules.scriptmind.dto.ForeshadowListResponse;
 import io.framemind.modules.scriptmind.dto.ForeshadowResponse;
 import io.framemind.modules.scriptmind.dto.ForeshadowUpdateRequest;
-import io.framemind.modules.scriptmind.model.Foreshadow;
+import io.framemind.modules.scriptmind.po.ForeshadowPO;
 import io.framemind.modules.scriptmind.repository.ForeshadowRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+/**
+ * 伏笔服务，负责伏笔的创建、查询、更新和统计等业务操作。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -27,11 +30,18 @@ public class ForeshadowService {
     private final ForeshadowRepository foreshadowRepository;
     private final ProjectRepository projectRepository;
 
-    // ─── Read Methods ───────────────────────────────────────────────
+    // ─── 读取方法 ───────────────────────────────────────────────────
 
+    /**
+     * 获取项目的伏笔列表，支持按状态筛选。
+     *
+     * @param projectId 项目 ID
+     * @param status    伏笔状态筛选条件（可选）
+     * @return 伏笔列表响应
+     */
     @Transactional(readOnly = true)
     public ForeshadowListResponse listForeshadows(UUID projectId, String status) {
-        List<Foreshadow> foreshadows;
+        List<ForeshadowPO> foreshadows;
         if (status != null && !status.isBlank()) {
             foreshadows = foreshadowRepository.findByProjectIdAndStatusOrderByCreatedAtDesc(projectId, status);
         } else {
@@ -48,11 +58,23 @@ public class ForeshadowService {
         return new ForeshadowListResponse(items, items.size(), unresolved);
     }
 
+    /**
+     * 检查项目中未解决的伏笔（状态为"planted"的伏笔）。
+     *
+     * @param projectId 项目 ID
+     * @return 未解决的伏笔列表
+     */
     @Transactional(readOnly = true)
-    public List<Foreshadow> checkUnresolvedForeshadows(UUID projectId) {
+    public List<ForeshadowPO> checkUnresolvedForeshadows(UUID projectId) {
         return foreshadowRepository.findByProjectIdAndStatusOrderByCreatedAtDesc(projectId, "planted");
     }
 
+    /**
+     * 获取项目的伏笔统计信息，包括总数、已回收数和待回收数。
+     *
+     * @param projectId 项目 ID
+     * @return 统计信息（包含 total、resolved、unresolved 字段）
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> getForeshadowStats(UUID projectId) {
         long total = foreshadowRepository.findByProjectIdOrderByCreatedAtDesc(projectId).size();
@@ -66,8 +88,18 @@ public class ForeshadowService {
         return stats;
     }
 
-    // ─── Write Methods ──────────────────────────────────────────────
+    // ─── 写入方法 ──────────────────────────────────────────────────
 
+    /**
+     * 创建新伏笔。
+     *
+     * @param projectId    项目 ID
+     * @param plant        伏笔描述
+     * @param episodeHint  提示集数
+     * @param urgency      紧急程度
+     * @param characterId  关联角色 ID
+     * @return 创建后的伏笔响应
+     */
     @Transactional
     public ForeshadowResponse createForeshadow(UUID projectId, String plant, Integer episodeHint,
                                                 String urgency, String characterId) {
@@ -75,10 +107,10 @@ public class ForeshadowService {
             throw new IllegalArgumentException("Plant description must not be null or blank");
         }
 
-        Project project = projectRepository.findById(projectId)
+        ProjectPO project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
 
-        Foreshadow foreshadow = Foreshadow.builder()
+        ForeshadowPO foreshadow = ForeshadowPO.builder()
                 .project(project)
                 .plant(plant)
                 .episodeHint(episodeHint)
@@ -92,13 +124,20 @@ public class ForeshadowService {
         return toResponse(foreshadow);
     }
 
+    /**
+     * 更新伏笔信息。
+     *
+     * @param foreshadowId 伏笔 ID
+     * @param request      更新请求
+     * @return 更新后的伏笔响应
+     */
     @Transactional
     public ForeshadowResponse updateForeshadow(UUID foreshadowId, ForeshadowUpdateRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("Update request must not be null");
         }
 
-        Foreshadow foreshadow = foreshadowRepository.findById(foreshadowId)
+        ForeshadowPO foreshadow = foreshadowRepository.findById(foreshadowId)
                 .orElseThrow(() -> new EntityNotFoundException("Foreshadow not found: " + foreshadowId));
 
         if (request.status() != null) {
@@ -116,9 +155,9 @@ public class ForeshadowService {
         return toResponse(foreshadow);
     }
 
-    // ─── Mapping ────────────────────────────────────────────────────
+    // ─── 映射转换 ────────────────────────────────────────────────────
 
-    private ForeshadowResponse toResponse(Foreshadow f) {
+    private ForeshadowResponse toResponse(ForeshadowPO f) {
         return new ForeshadowResponse(
                 f.getId(),
                 f.getPlant(),

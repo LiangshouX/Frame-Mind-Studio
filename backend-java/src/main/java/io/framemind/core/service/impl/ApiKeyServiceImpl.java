@@ -1,7 +1,7 @@
 package io.framemind.core.service.impl;
 
-import io.framemind.core.dto.SettingsRequest;
-import io.framemind.core.dto.SettingsResponse;
+import io.framemind.core.service.dto.SettingsRequest;
+import io.framemind.core.service.dto.SettingsResponse;
 import io.framemind.core.service.ApiKeyService;
 import io.framemind.core.service.ConfigFileStore;
 import io.framemind.core.service.ModelCatalogService;

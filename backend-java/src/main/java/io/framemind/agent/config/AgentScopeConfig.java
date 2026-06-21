@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.AbstractMap;
 import java.util.Map;
 
 /**
@@ -30,8 +31,8 @@ public class AgentScopeConfig {
      */
     @Bean
     public Map<String, AgentDefinition> agentDefinitions() {
-        return Map.of(
-                "showrunner", new AgentDefinition(
+        return Map.ofEntries(
+                Map.entry("showrunner", new AgentDefinition(
                         "showrunner",
                         "你是「主笔编剧」Showrunner Agent。你的职责是：\n"
                                 + "1. 解析用户的创意输入（一句话梗概、大纲文本等）\n"
@@ -41,8 +42,8 @@ public class AgentScopeConfig {
                                 + "输出格式要求：JSON 结构化大纲，包含 episode_list、hook_design、theme 等字段。\n"
                                 + "当前模型提供者: " + modelProvider,
                         10
-                ),
-                "world_builder", new AgentDefinition(
+                )),
+                Map.entry("world_builder", new AgentDefinition(
                         "world_builder",
                         "你是「世界观架构师」WorldBuilder Agent。你的职责是：\n"
                                 + "1. 根据故事大纲构建完整的世界观设定\n"
@@ -51,8 +52,8 @@ public class AgentScopeConfig {
                                 + "4. 定义关键场景的地理、文化和社会背景\n\n"
                                 + "输出格式要求：JSON 结构化世界观，包含 timeline、rules、locations、culture 等字段。",
                         8
-                ),
-                "character_designer", new AgentDefinition(
+                )),
+                Map.entry("character_designer", new AgentDefinition(
                         "character_designer",
                         "你是「角色设计师」CharacterDesigner Agent。你的职责是：\n"
                                 + "1. 根据故事大纲和世界观设计角色卡片\n"
@@ -61,8 +62,8 @@ public class AgentScopeConfig {
                                 + "4. 确保角色之间的化学反应和冲突设计合理\n\n"
                                 + "输出格式要求：JSON 数组，每个元素为一个角色卡片，包含 name、role、personality、appearance、background、arc、relationships 等字段。",
                         8
-                ),
-                "script_doctor", new AgentDefinition(
+                )),
+                Map.entry("script_doctor", new AgentDefinition(
                         "script_doctor",
                         "你是「剧本医生」ScriptDoctor Agent。你的职责是：\n"
                                 + "1. 审校剧本的逻辑性、节奏感、情感张力\n"
@@ -72,7 +73,18 @@ public class AgentScopeConfig {
                                 + "5. 评估整体质量并给出评分\n\n"
                                 + "输出格式要求：JSON 对象，包含 overall_score、issues（问题列表）、suggestions（建议列表）、foreshadow_status 等字段。",
                         10
-                )
+                )),
+                Map.entry("creative", new AgentDefinition(
+                        "creative",
+                        "你是「创意总监」Creative Agent。你的职责是：\n"
+                                + "1. 引导用户讨论和明确创作创意与世界观设定\n"
+                                + "2. 分析题材方向、时代背景、核心冲突、独特卖点\n"
+                                + "3. 搜索当前市场上类似题材的作品以避免雷同\n"
+                                + "4. 生成结构化的世界观设定和梗概文档\n\n"
+                                + "输出格式要求：JSON 结构化数据，包含世界观设定或梗概的各个字段。\n"
+                                + "请始终以 JSON 格式输出，不要包含额外说明文字。",
+                        8
+                ))
         );
     }
 }

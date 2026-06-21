@@ -2,9 +2,9 @@ package io.framemind.modules.scriptmind.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.framemind.modules.scriptmind.dto.QualityMetricsResponse;
-import io.framemind.modules.scriptmind.model.Character;
-import io.framemind.modules.scriptmind.model.Foreshadow;
-import io.framemind.modules.scriptmind.model.Script;
+import io.framemind.modules.scriptmind.po.CharacterPO;
+import io.framemind.modules.scriptmind.po.ForeshadowPO;
+import io.framemind.modules.scriptmind.po.ScriptPO;
 import io.framemind.modules.scriptmind.repository.CharacterRepository;
 import io.framemind.modules.scriptmind.repository.ForeshadowRepository;
 import io.framemind.modules.scriptmind.repository.ScriptRepository;
@@ -20,6 +20,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * 质量评估服务，负责计算剧本的各项质量指标，包括钩子强度、节奏曲线、角色均衡、对白比例和场景多样性。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -29,9 +32,15 @@ public class QualityService {
     private final CharacterRepository characterRepository;
     private final ForeshadowRepository foreshadowRepository;
 
+    /**
+     * 计算项目的剧本质量指标。
+     *
+     * @param projectId 项目 ID
+     * @return 质量指标响应，包含各项评分和伏笔状态
+     */
     @Transactional(readOnly = true)
     public QualityMetricsResponse computeQualityMetrics(UUID projectId) {
-        Script script = scriptRepository.findByProjectId(projectId)
+        ScriptPO script = scriptRepository.findByProjectId(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("Script not found for project " + projectId));
 
         JsonNode content = script.getContent();
@@ -42,9 +51,9 @@ public class QualityService {
             return emptyMetrics("No script content available");
         }
 
-        // Inject CharacterRepository and ForeshadowRepository for richer analysis
-        List<Character> characters = characterRepository.findByProjectIdOrderByNameAsc(projectId);
-        List<Foreshadow> foreshadows = foreshadowRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
+        // 查询角色和伏笔信息以进行更丰富的分析
+        List<CharacterPO> characters = characterRepository.findByProjectIdOrderByNameAsc(projectId);
+        List<ForeshadowPO> foreshadows = foreshadowRepository.findByProjectIdOrderByCreatedAtDesc(projectId);
 
         double hookStrength = computeHookStrength(episodes);
         double rhythmCurve = computeRhythmCurve(episodes);
@@ -52,7 +61,7 @@ public class QualityService {
         double dialogueRatio = computeDialogueRatio(episodes);
         double sceneDiversity = computeSceneDiversity(episodes);
 
-        // Foreshadow status from DB
+        // 伏笔状态（来自数据库）
         long totalForeshadows = foreshadows.size();
         long resolvedForeshadows = foreshadowRepository.countByProjectIdAndStatus(projectId, "resolved");
         long unresolvedForeshadows = totalForeshadows - resolvedForeshadows;
@@ -60,8 +69,8 @@ public class QualityService {
         String foreshadowDetails = String.format("共 %d 条伏笔，已回收 %d 条，待回收 %d 条",
                 totalForeshadows, resolvedForeshadows, unresolvedForeshadows);
 
-        // Overall score: weighted average (0-100)
-        // Weights: hook=25, rhythm=15, character=20, dialogue=15, diversity=10, foreshadow=15
+        // 综合评分：加权平均（0-100）
+        // 权重：钩子=25，节奏=15，角色=20，对白=15，多样性=10，伏笔=15
         double foreshadowScore = totalForeshadows > 0
                 ? (double) resolvedForeshadows / totalForeshadows : 1.0;
         double overall = (
@@ -88,11 +97,10 @@ public class QualityService {
         );
     }
 
-    // ─── Metric Computations ────────────────────────────────────────
+    // ─── 指标计算方法 ────────────────────────────────────────────────
 
     /**
-     * Hook strength: check if each episode has a cliffhanger, hook, or ends with
-     * dialogue/emotion/transition (0-100 score).
+     * 计算钩子强度：检查每集是否有悬念、钩子或以对白/情感/转场结尾（0-100 分）。
      */
     private double computeHookStrength(JsonNode episodes) {
         if (!episodes.isArray() || episodes.isEmpty()) return 50.0;
@@ -103,12 +111,12 @@ public class QualityService {
         for (JsonNode ep : episodes) {
             boolean hasHook = false;
 
-            // Check explicit cliffhanger field
+            // 检查显式的 cliffhanger 字段
             if (ep.has("cliffhanger") && !ep.get("cliffhanger").asText("").isBlank()) {
                 hasHook = true;
             }
 
-            // Check for hook-type beats (cliffhanger, revelation, turning_point)
+            // 检查钩子类型的 beat（cliffhanger、revelation、turning_point）
             if (!hasHook) {
                 JsonNode scenes = ep.get("scenes");
                 if (scenes != null && scenes.isArray()) {
@@ -129,7 +137,7 @@ public class QualityService {
                 }
             }
 
-            // Check if last beat of last scene suggests a hook
+            // 检查最后一场的最后一个 beat 是否暗示钩子
             if (!hasHook) {
                 JsonNode scenes = ep.get("scenes");
                 if (scenes != null && scenes.isArray() && scenes.size() > 0) {
@@ -152,8 +160,8 @@ public class QualityService {
     }
 
     /**
-     * Rhythm curve: measure action/dialogue/transition distribution.
-     * Ideal: avg 3-6 beats per scene, with balanced type distribution.
+     * 计算节奏曲线：衡量动作/对白/转场的分布。
+     * 理想值：每场 3-6 个 beat，类型分布均衡。
      */
     private double computeRhythmCurve(JsonNode episodes) {
         int totalScenes = 0;
@@ -184,19 +192,19 @@ public class QualityService {
 
         if (totalScenes == 0) return 50.0;
 
-        // Score based on beats-per-scene
+        // 基于每场 beat 数量评分
         double avgBeatsPerScene = (double) totalBeats / totalScenes;
         double bpsScore;
         if (avgBeatsPerScene >= 3 && avgBeatsPerScene <= 6) bpsScore = 85.0;
         else if (avgBeatsPerScene >= 2 && avgBeatsPerScene <= 8) bpsScore = 70.0;
         else bpsScore = 50.0;
 
-        // Score based on type distribution balance
+        // 基于类型分布均衡性评分
         if (totalBeats > 0) {
             double actionRatio = (double) actionCount / totalBeats;
             double dialogueRatio = (double) dialogueCount / totalBeats;
             double transRatio = (double) transitionCount / totalBeats;
-            // Variance from ideal (action:0.4, dialogue:0.4, transition:0.2)
+            // 与理想值的方差（动作:0.4，对白:0.4，转场:0.2）
             double variance = Math.pow(actionRatio - 0.4, 2) +
                     Math.pow(dialogueRatio - 0.4, 2) +
                     Math.pow(transRatio - 0.2, 2);
@@ -209,15 +217,15 @@ public class QualityService {
     }
 
     /**
-     * Character balance: protagonist dialogue / total dialogue ratio.
-     * Also considers character presence across episodes for richer analysis.
-     * Target range: 0.4-0.6.
+     * 计算角色均衡：主角对白占总对白的比例。
+     * 同时考虑角色在各集中的出场情况以进行更丰富的分析。
+     * 目标范围：0.4-0.6。
      */
-    private double computeCharacterBalance(JsonNode episodes, List<Character> characters) {
+    private double computeCharacterBalance(JsonNode episodes, List<CharacterPO> characters) {
         java.util.Map<String, Integer> characterDialogueCount = new java.util.HashMap<>();
         int totalDialogue = 0;
 
-        // Count dialogue beats per character
+        // 统计每个角色的对白 beat 数量
         for (JsonNode ep : episodes) {
             JsonNode scenes = ep.get("scenes");
             if (scenes == null || !scenes.isArray()) continue;
@@ -239,7 +247,7 @@ public class QualityService {
 
         if (totalDialogue == 0 || characterDialogueCount.isEmpty()) return 40.0;
 
-        // Find the character with the most dialogue (assumed protagonist)
+        // 找出对白最多的角色（视为主角）
         int maxDialogue = characterDialogueCount.values().stream()
                 .mapToInt(Integer::intValue)
                 .max()
@@ -247,7 +255,7 @@ public class QualityService {
 
         double protagonistRatio = (double) maxDialogue / totalDialogue;
 
-        // Score: ideal is 0.4-0.6 protagonist dialogue ratio
+        // 评分：理想比例为 0.4-0.6
         if (protagonistRatio >= 0.4 && protagonistRatio <= 0.6) return 85.0;
         if (protagonistRatio >= 0.3 && protagonistRatio <= 0.7) return 70.0;
         if (protagonistRatio >= 0.2 && protagonistRatio <= 0.8) return 55.0;
@@ -255,8 +263,8 @@ public class QualityService {
     }
 
     /**
-     * Dialogue ratio: dialogue elements / total elements.
-     * Target range: 0.3-0.5.
+     * 计算对白比例：对白元素占总元素的比例。
+     * 目标范围：0.3-0.5。
      */
     private double computeDialogueRatio(JsonNode episodes) {
         int dialogueCount = 0;
@@ -281,7 +289,7 @@ public class QualityService {
         if (totalElements == 0) return 50.0;
 
         double ratio = (double) dialogueCount / totalElements * 100;
-        // Ideal dialogue ratio is 30-50%
+        // 理想对白比例为 30-50%
         if (ratio >= 30 && ratio <= 50) return 85.0;
         if (ratio >= 20 && ratio <= 65) return 70.0;
         if (ratio >= 10 && ratio <= 80) return 55.0;
@@ -289,8 +297,8 @@ public class QualityService {
     }
 
     /**
-     * Scene diversity: unique location count / total scenes.
-     * Target: > 0.6.
+     * 计算场景多样性：独立场景地点数占总场景数的比例。
+     * 目标：> 0.6。
      */
     private double computeSceneDiversity(JsonNode episodes) {
         Set<String> uniqueLocations = new HashSet<>();
@@ -317,7 +325,7 @@ public class QualityService {
         return 40.0;
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────
+    // ─── 辅助方法 ────────────────────────────────────────────────────
 
     private String metricStatus(double value, double target) {
         if (value >= target) return "good";

@@ -1,9 +1,9 @@
 package io.framemind.core.service;
 
-import io.framemind.core.dto.ConnectivityTestResult;
-import io.framemind.core.dto.McpServerConfigRequest;
-import io.framemind.core.dto.ToolConfigRequest;
-import io.framemind.core.dto.ToolConfigResponse;
+import io.framemind.core.service.dto.ConnectivityTestResult;
+import io.framemind.core.service.dto.McpServerConfigRequest;
+import io.framemind.core.service.dto.ToolConfigRequest;
+import io.framemind.core.service.dto.ToolConfigResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Service for managing tool configurations (Tavily, MCP servers, etc.)

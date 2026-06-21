@@ -1,6 +1,6 @@
 package io.framemind.core.service;
 
-import io.framemind.core.dto.ConnectivityTestResult;
+import io.framemind.core.service.dto.ConnectivityTestResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

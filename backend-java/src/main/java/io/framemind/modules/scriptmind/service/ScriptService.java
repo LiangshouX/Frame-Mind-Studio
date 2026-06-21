@@ -4,85 +4,69 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.framemind.core.model.Project;
-import io.framemind.core.repository.ProjectRepository;
-import io.framemind.modules.scriptmind.dto.DiffResponse;
-import io.framemind.modules.scriptmind.dto.VersionDetailResponse;
-import io.framemind.modules.scriptmind.dto.VersionListResponse;
-import io.framemind.modules.scriptmind.dto.VersionResponse;
-import io.framemind.modules.scriptmind.model.Script;
-import io.framemind.modules.scriptmind.model.ScriptVersion;
-import io.framemind.modules.scriptmind.repository.CharacterRepository;
-import io.framemind.modules.scriptmind.repository.ForeshadowRepository;
+import io.framemind.infrastructure.po.ProjectPO;
+import io.framemind.infrastructure.repository.ProjectRepository;
+import io.framemind.modules.scriptmind.po.ScriptPO;
 import io.framemind.modules.scriptmind.repository.ScriptRepository;
-import io.framemind.modules.scriptmind.repository.ScriptVersionRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
+/**
+ * 剧本服务，负责剧本的创建、编辑、集数编排等业务操作。
+ * 新内容直接覆盖旧内容，不保留历史版本。
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ScriptService {
 
     private final ScriptRepository scriptRepository;
-    private final ScriptVersionRepository scriptVersionRepository;
-    private final CharacterRepository characterRepository;
-    private final ForeshadowRepository foreshadowRepository;
     private final ProjectRepository projectRepository;
     private final ObjectMapper objectMapper;
 
-    // ─── Read Methods ───────────────────────────────────────────────
+    // ─── 读取方法 ───────────────────────────────────────────────────
 
+    /**
+     * 根据项目 ID 获取关联的剧本。
+     *
+     * @param projectId 项目 ID
+     * @return 剧本（可能为空）
+     */
     @Transactional(readOnly = true)
-    public Optional<Script> getScriptByProjectId(UUID projectId) {
+    public Optional<ScriptPO> getScriptByProjectId(UUID projectId) {
         return scriptRepository.findByProjectId(projectId);
     }
 
-    @Transactional(readOnly = true)
-    public VersionListResponse getVersionHistory(UUID projectId, int limit, int offset) {
-        Script script = getScriptOrThrow(projectId);
-        List<ScriptVersion> versions = scriptVersionRepository.findByScriptIdOrderByVersionDesc(
-                script.getId(), PageRequest.of(offset / Math.max(limit, 1), limit));
-        List<VersionResponse> items = versions.stream()
-                .map(v -> new VersionResponse(v.getId(), v.getVersion(), v.getMessage(), v.getCreatedAt()))
-                .collect(Collectors.toList());
-        long total = scriptVersionRepository.findByScriptIdOrderByVersionDesc(script.getId()).size();
-        return new VersionListResponse(items, (int) total);
-    }
+    // ─── 写入方法 ──────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
-    public VersionDetailResponse getVersion(UUID projectId, int version) {
-        Script script = getScriptOrThrow(projectId);
-        ScriptVersion sv = scriptVersionRepository.findByScriptIdAndVersion(script.getId(), version)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Version " + version + " not found for script in project " + projectId));
-        return new VersionDetailResponse(sv.getId(), sv.getVersion(), sv.getContent(), sv.getMessage(), sv.getCreatedAt());
-    }
-
-    // ─── Write Methods ──────────────────────────────────────────────
-
+    /**
+     * 为项目创建新剧本。
+     *
+     * @param projectId 项目 ID
+     * @param title     剧本标题
+     * @param content   剧本内容（JSON）
+     * @return 创建后的剧本实体
+     * @throws IllegalStateException 项目已存在剧本时抛出
+     */
     @Transactional
-    public Script createScript(UUID projectId, String title, JsonNode content) {
-        Project project = projectRepository.findById(projectId)
+    public ScriptPO createScript(UUID projectId, String title, JsonNode content) {
+        ProjectPO project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
 
         if (scriptRepository.findByProjectId(projectId).isPresent()) {
             throw new IllegalStateException("Script already exists for project " + projectId);
         }
 
-        Script script = Script.builder()
+        ScriptPO script = ScriptPO.builder()
                 .project(project)
                 .title(title != null ? title : "Untitled Script")
                 .content(content != null ? content : objectMapper.createObjectNode())
@@ -91,26 +75,32 @@ public class ScriptService {
         recalculateCounts(script);
         script = scriptRepository.save(script);
 
-        // Auto-create version 1 snapshot
-        saveVersionSnapshot(script, "Initial version");
-
         log.info("Created script for project {} with title '{}'", projectId, script.getTitle());
         return script;
     }
 
+    /**
+     * 更新剧本内容。如果剧本不存在则自动创建（Upsert 语义）。
+     * 新内容直接覆盖旧内容，不保留历史版本。
+     *
+     * @param projectId 项目 ID
+     * @param content   新的剧本内容（JSON）
+     * @return 更新后的剧本实体
+     * @throws IllegalArgumentException 内容为 null 时抛出
+     */
     @Transactional
-    public Script updateScript(UUID projectId, JsonNode content, String changeSummary) {
+    public ScriptPO updateScript(UUID projectId, JsonNode content) {
         if (content == null) {
             throw new IllegalArgumentException("Content must not be null");
         }
 
-        // Upsert: create script if it doesn't exist yet
-        Script script = scriptRepository.findByProjectId(projectId)
+        // Upsert：如果剧本不存在则自动创建
+        ScriptPO script = scriptRepository.findByProjectId(projectId)
                 .orElseGet(() -> {
                     log.info("Script not found for project {}, creating new one", projectId);
-                    Project project = projectRepository.findById(projectId)
+                    ProjectPO project = projectRepository.findById(projectId)
                             .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
-                    return Script.builder()
+                    return ScriptPO.builder()
                             .project(project)
                             .title("Untitled Script")
                             .content(objectMapper.createObjectNode())
@@ -123,93 +113,53 @@ public class ScriptService {
         recalculateCounts(script);
         script = scriptRepository.save(script);
 
-        saveVersionSnapshot(script, changeSummary != null ? changeSummary : "Updated");
-
         log.info("Updated script for project {} to version {}", projectId, script.getVersion());
         return script;
     }
 
+    /**
+     * 更新单集剧本内容。
+     *
+     * @param projectId     项目 ID
+     * @param episodeNumber 集数编号
+     * @param episodeContent 新的集数内容（JSON）
+     * @return 更新后的剧本实体
+     */
     @Transactional
-    public Script restoreVersion(UUID projectId, int version) {
-        Script script = getScriptOrThrow(projectId);
-        ScriptVersion sv = scriptVersionRepository.findByScriptIdAndVersion(script.getId(), version)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Version " + version + " not found for script in project " + projectId));
+    public ScriptPO updateEpisode(UUID projectId, int episodeNumber, JsonNode episodeContent) {
+        ScriptPO script = getScriptOrThrow(projectId);
+        JsonNode content = script.getContent();
+        ArrayNode episodes = (ArrayNode) getEpisodesArray(content);
 
-        script.setContent(sv.getContent());
+        boolean found = false;
+        for (int i = 0; i < episodes.size(); i++) {
+            JsonNode ep = episodes.get(i);
+            if (ep.has("episodeNumber") && ep.get("episodeNumber").asInt() == episodeNumber) {
+                episodes.set(i, episodeContent);
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            throw new EntityNotFoundException("Episode " + episodeNumber + " not found in script");
+        }
+
+        script.setContent(content);
         script.setVersion(script.getVersion() + 1);
         recalculateCounts(script);
         script = scriptRepository.save(script);
 
-        saveVersionSnapshot(script, "Restored from version " + version);
-
-        log.info("Restored script for project {} from version {}, new version is {}",
-                projectId, version, script.getVersion());
+        log.info("Updated episode {} for project {}", episodeNumber, projectId);
         return script;
     }
 
-    @Transactional(readOnly = true)
-    public DiffResponse computeDiff(UUID projectId, int fromVersion, int toVersion) {
-        Script script = getScriptOrThrow(projectId);
-
-        ScriptVersion from = scriptVersionRepository.findByScriptIdAndVersion(script.getId(), fromVersion)
-                .orElseThrow(() -> new EntityNotFoundException("Version " + fromVersion + " not found"));
-        ScriptVersion to = scriptVersionRepository.findByScriptIdAndVersion(script.getId(), toVersion)
-                .orElseThrow(() -> new EntityNotFoundException("Version " + toVersion + " not found"));
-
-        JsonNode fromEpisodes = getEpisodesArray(from.getContent());
-        JsonNode toEpisodes = getEpisodesArray(to.getContent());
-
-        List<DiffResponse.EpisodeDiff> added = new ArrayList<>();
-        List<DiffResponse.EpisodeDiff> removed = new ArrayList<>();
-        List<DiffResponse.EpisodeDiff> modified = new ArrayList<>();
-
-        // Index episodes by episode number
-        java.util.Map<Integer, JsonNode> fromMap = new java.util.HashMap<>();
-        java.util.Map<Integer, JsonNode> toMap = new java.util.HashMap<>();
-
-        if (fromEpisodes.isArray()) {
-            for (JsonNode ep : fromEpisodes) {
-                int epNum = ep.has("episodeNumber") ? ep.get("episodeNumber").asInt() : 0;
-                fromMap.put(epNum, ep);
-            }
-        }
-        if (toEpisodes.isArray()) {
-            for (JsonNode ep : toEpisodes) {
-                int epNum = ep.has("episodeNumber") ? ep.get("episodeNumber").asInt() : 0;
-                toMap.put(epNum, ep);
-            }
-        }
-
-        // Find added episodes
-        for (java.util.Map.Entry<Integer, JsonNode> entry : toMap.entrySet()) {
-            if (!fromMap.containsKey(entry.getKey())) {
-                added.add(new DiffResponse.EpisodeDiff(entry.getKey(), List.of()));
-            }
-        }
-
-        // Find removed episodes
-        for (java.util.Map.Entry<Integer, JsonNode> entry : fromMap.entrySet()) {
-            if (!toMap.containsKey(entry.getKey())) {
-                removed.add(new DiffResponse.EpisodeDiff(entry.getKey(), List.of()));
-            }
-        }
-
-        // Find modified episodes (compare scene-level)
-        for (java.util.Map.Entry<Integer, JsonNode> entry : fromMap.entrySet()) {
-            int epNum = entry.getKey();
-            if (toMap.containsKey(epNum)) {
-                List<DiffResponse.SceneDiff> sceneDiffs = diffScenes(entry.getValue(), toMap.get(epNum));
-                if (!sceneDiffs.isEmpty()) {
-                    modified.add(new DiffResponse.EpisodeDiff(epNum, sceneDiffs));
-                }
-            }
-        }
-
-        return new DiffResponse(fromVersion, toVersion,
-                new DiffResponse.DiffData(added, removed, modified));
-    }
-
+    /**
+     * 解析大纲文本，提取集数结构和关键事件。
+     *
+     * @param outlineText 大纲文本
+     * @return 解析后的 JSON 结构
+     */
     @Transactional(readOnly = true)
     public JsonNode parseOutline(String outlineText) {
         if (outlineText == null || outlineText.isBlank()) {
@@ -223,7 +173,7 @@ public class ScriptService {
         ObjectNode currentEpisode = null;
         int episodeNumber = 0;
 
-        // Patterns for episode markers
+        // 集数标记模式
         Pattern headingPattern = Pattern.compile("^#{1,3}\\s*(.+)");
         Pattern chineseEpisodePattern = Pattern.compile("第\\s*(\\d+)\\s*集");
         Pattern chapterPattern = Pattern.compile("(?i)(?:chapter|ep(?:isode)?|第)\\s*(\\d+)");
@@ -233,12 +183,12 @@ public class ScriptService {
             String trimmed = line.trim();
             if (trimmed.isEmpty()) continue;
 
-            // Check for markdown heading
+            // 检查 Markdown 标题
             Matcher headingMatcher = headingPattern.matcher(trimmed);
             if (headingMatcher.matches()) {
                 String headingText = headingMatcher.group(1);
 
-                // Check if it looks like an episode heading
+                // 检查是否为集数标题
                 Matcher epMatcher = chineseEpisodePattern.matcher(headingText);
                 Matcher chMatcher = chapterPattern.matcher(headingText);
 
@@ -265,7 +215,7 @@ public class ScriptService {
                 }
             }
 
-            // Check for numbered list items
+            // 检查编号列表项
             Matcher numMatcher = numberedPattern.matcher(trimmed);
             if (numMatcher.matches()) {
                 episodeNumber = Integer.parseInt(numMatcher.group(1));
@@ -279,7 +229,7 @@ public class ScriptService {
                 continue;
             }
 
-            // Otherwise treat as content within current episode (summary/key event)
+            // 其余内容作为当前集数的摘要/关键事件
             if (currentEpisode != null) {
                 if (currentEpisode.has("summary")) {
                     String existing = currentEpisode.get("summary").asText();
@@ -290,7 +240,7 @@ public class ScriptService {
             }
         }
 
-        // Add last episode
+        // 添加最后一集
         if (currentEpisode != null) {
             episodes.add(currentEpisode);
         }
@@ -300,17 +250,24 @@ public class ScriptService {
         return result;
     }
 
+    /**
+     * 重新排列集数顺序。
+     *
+     * @param projectId 项目 ID
+     * @param newOrder  新的集数顺序（集数编号列表）
+     * @return 更新后的剧本实体
+     */
     @Transactional
-    public Script reorderEpisodes(UUID projectId, List<Integer> newOrder) {
+    public ScriptPO reorderEpisodes(UUID projectId, List<Integer> newOrder) {
         if (newOrder == null || newOrder.isEmpty()) {
             throw new IllegalArgumentException("newOrder must not be null or empty");
         }
 
-        Script script = getScriptOrThrow(projectId);
+        ScriptPO script = getScriptOrThrow(projectId);
         JsonNode content = script.getContent();
         ArrayNode episodes = (ArrayNode) getEpisodesArray(content);
 
-        // Build index by episode number
+        // 按集数编号构建索引
         java.util.Map<Integer, JsonNode> episodeMap = new java.util.LinkedHashMap<>();
         for (JsonNode ep : episodes) {
             int epNum = ep.get("episodeNumber").asInt();
@@ -326,7 +283,7 @@ public class ScriptService {
             reordered.add(ep);
         }
 
-        // Update episode numbers to reflect new order
+        // 更新集数编号以反映新顺序
         for (int i = 0; i < reordered.size(); i++) {
             ((ObjectNode) reordered.get(i)).put("episodeNumber", i + 1);
         }
@@ -340,162 +297,18 @@ public class ScriptService {
         script.setVersion(script.getVersion() + 1);
         recalculateCounts(script);
         script = scriptRepository.save(script);
-        saveVersionSnapshot(script, "Reordered episodes");
 
         return script;
     }
 
-    @Transactional
-    public Script mergeEpisodes(UUID projectId, int ep1, int ep2) {
-        if (ep1 == ep2) {
-            throw new IllegalArgumentException("Cannot merge an episode with itself");
-        }
+    // ─── 私有辅助方法 ───────────────────────────────────────────────
 
-        Script script = getScriptOrThrow(projectId);
-        JsonNode content = script.getContent();
-        ArrayNode episodes = (ArrayNode) getEpisodesArray(content);
-
-        JsonNode first = null;
-        JsonNode second = null;
-        int firstIdx = -1, secondIdx = -1;
-
-        for (int i = 0; i < episodes.size(); i++) {
-            int epNum = episodes.get(i).get("episodeNumber").asInt();
-            if (epNum == ep1) { first = episodes.get(i); firstIdx = i; }
-            if (epNum == ep2) { second = episodes.get(i); secondIdx = i; }
-        }
-
-        if (first == null) throw new EntityNotFoundException("Episode " + ep1 + " not found");
-        if (second == null) throw new EntityNotFoundException("Episode " + ep2 + " not found");
-
-        // Merge scenes from second into first
-        ArrayNode mergedScenes = objectMapper.createArrayNode();
-        JsonNode firstScenes = first.get("scenes");
-        JsonNode secondScenes = second.get("scenes");
-        if (firstScenes != null && firstScenes.isArray()) {
-            for (JsonNode s : firstScenes) mergedScenes.add(s);
-        }
-        if (secondScenes != null && secondScenes.isArray()) {
-            for (JsonNode s : secondScenes) mergedScenes.add(s);
-        }
-
-        ((ObjectNode) first).set("scenes", mergedScenes);
-        String title1 = first.has("title") ? first.get("title").asText() : "";
-        String title2 = second.has("title") ? second.get("title").asText() : "";
-        ((ObjectNode) first).put("title", title1 + " + " + title2);
-
-        // Remove second episode
-        int removeIdx = Math.max(firstIdx, secondIdx);
-        episodes.remove(removeIdx);
-
-        // Renumber episodes
-        for (int i = 0; i < episodes.size(); i++) {
-            ((ObjectNode) episodes.get(i)).put("episodeNumber", i + 1);
-        }
-
-        if (content.isObject()) {
-            ((ObjectNode) content).put("totalEpisodes", episodes.size());
-        }
-
-        script.setContent(content);
-        script.setVersion(script.getVersion() + 1);
-        recalculateCounts(script);
-        script = scriptRepository.save(script);
-        saveVersionSnapshot(script, "Merged episodes " + ep1 + " and " + ep2);
-
-        return script;
-    }
-
-    @Transactional
-    public Script splitEpisode(UUID projectId, int episodeNumber, int splitPoint) {
-        Script script = getScriptOrThrow(projectId);
-        JsonNode content = script.getContent();
-        ArrayNode episodes = (ArrayNode) getEpisodesArray(content);
-
-        JsonNode target = null;
-        int targetIdx = -1;
-        for (int i = 0; i < episodes.size(); i++) {
-            if (episodes.get(i).get("episodeNumber").asInt() == episodeNumber) {
-                target = episodes.get(i);
-                targetIdx = i;
-                break;
-            }
-        }
-
-        if (target == null) {
-            throw new EntityNotFoundException("Episode " + episodeNumber + " not found");
-        }
-
-        JsonNode scenes = target.get("scenes");
-        if (scenes == null || !scenes.isArray() || scenes.size() <= 1) {
-            throw new IllegalArgumentException("Episode must have more than one scene to split");
-        }
-
-        if (splitPoint < 1 || splitPoint >= scenes.size()) {
-            throw new IllegalArgumentException("splitPoint must be between 1 and " + (scenes.size() - 1));
-        }
-
-        // First half keeps original episode number
-        ArrayNode firstHalf = objectMapper.createArrayNode();
-        ArrayNode secondHalf = objectMapper.createArrayNode();
-        for (int i = 0; i < scenes.size(); i++) {
-            if (i < splitPoint) {
-                firstHalf.add(scenes.get(i));
-            } else {
-                secondHalf.add(scenes.get(i));
-            }
-        }
-
-        ((ObjectNode) target).set("scenes", firstHalf);
-        String originalTitle = target.has("title") ? target.get("title").asText() : "Episode " + episodeNumber;
-        ((ObjectNode) target).put("title", originalTitle + " (Part 1)");
-
-        // Create second episode
-        ObjectNode newEp = objectMapper.createObjectNode();
-        newEp.put("episodeNumber", episodeNumber + 1);
-        newEp.put("title", originalTitle + " (Part 2)");
-        newEp.set("scenes", secondHalf);
-        newEp.set("keyEvents", objectMapper.createArrayNode());
-
-        // Insert new episode after the original
-        episodes.insert(targetIdx + 1, newEp);
-
-        // Renumber all episodes
-        for (int i = 0; i < episodes.size(); i++) {
-            ((ObjectNode) episodes.get(i)).put("episodeNumber", i + 1);
-        }
-
-        if (content.isObject()) {
-            ((ObjectNode) content).put("totalEpisodes", episodes.size());
-        }
-
-        script.setContent(content);
-        script.setVersion(script.getVersion() + 1);
-        recalculateCounts(script);
-        script = scriptRepository.save(script);
-        saveVersionSnapshot(script, "Split episode " + episodeNumber + " at scene " + splitPoint);
-
-        return script;
-    }
-
-    // ─── Private Helpers ────────────────────────────────────────────
-
-    private Script getScriptOrThrow(UUID projectId) {
+    private ScriptPO getScriptOrThrow(UUID projectId) {
         return scriptRepository.findByProjectId(projectId)
                 .orElseThrow(() -> new EntityNotFoundException("Script not found for project " + projectId));
     }
 
-    private void saveVersionSnapshot(Script script, String message) {
-        ScriptVersion version = ScriptVersion.builder()
-                .script(script)
-                .version(script.getVersion())
-                .content(script.getContent())
-                .message(message)
-                .build();
-        scriptVersionRepository.save(version);
-    }
-
-    private void recalculateCounts(Script script) {
+    private void recalculateCounts(ScriptPO script) {
         JsonNode content = script.getContent();
         if (content == null || !content.isObject()) return;
 
@@ -503,6 +316,7 @@ public class ScriptService {
         int sceneCount = 0;
         int episodeCount = 0;
 
+        // 支持短剧模型（episodes）和传统影视模型（acts）
         JsonNode episodes = content.get("episodes");
         if (episodes != null && episodes.isArray()) {
             episodeCount = episodes.size();
@@ -511,13 +325,56 @@ public class ScriptService {
                 if (scenes != null && scenes.isArray()) {
                     sceneCount += scenes.size();
                     for (JsonNode scene : scenes) {
+                        // 短剧模型：beats
                         JsonNode beats = scene.get("beats");
                         if (beats != null && beats.isArray()) {
                             for (JsonNode beat : beats) {
                                 if (beat.has("content")) {
-                                    String text = beat.get("content").asText("");
-                                    // Approximate word count: for CJK, count characters; for Latin, split by whitespace
-                                    wordCount += countWords(text);
+                                    wordCount += countWords(beat.get("content").asText(""));
+                                }
+                                // 统计对白字数
+                                JsonNode dialogues = beat.get("dialogues");
+                                if (dialogues != null && dialogues.isArray()) {
+                                    for (JsonNode d : dialogues) {
+                                        if (d.has("line")) {
+                                            wordCount += countWords(d.get("line").asText(""));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // 传统影视模型：blocks
+                        JsonNode blocks = scene.get("blocks");
+                        if (blocks != null && blocks.isArray()) {
+                            for (JsonNode block : blocks) {
+                                if (block.has("content")) {
+                                    wordCount += countWords(block.get("content").asText(""));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 传统影视模型：acts → sequences → scenes
+        JsonNode acts = content.get("acts");
+        if (acts != null && acts.isArray()) {
+            for (JsonNode act : acts) {
+                JsonNode sequences = act.get("sequences");
+                if (sequences != null && sequences.isArray()) {
+                    for (JsonNode seq : sequences) {
+                        JsonNode scenes = seq.get("scenes");
+                        if (scenes != null && scenes.isArray()) {
+                            sceneCount += scenes.size();
+                            for (JsonNode scene : scenes) {
+                                JsonNode blocks = scene.get("blocks");
+                                if (blocks != null && blocks.isArray()) {
+                                    for (JsonNode block : blocks) {
+                                        if (block.has("content")) {
+                                            wordCount += countWords(block.get("content").asText(""));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -533,7 +390,6 @@ public class ScriptService {
 
     private int countWords(String text) {
         if (text == null || text.isBlank()) return 0;
-        // CJK characters count individually, Latin words split by whitespace
         int count = 0;
         boolean inWord = false;
         for (int i = 0; i < text.length(); i++) {
@@ -555,82 +411,5 @@ public class ScriptService {
             return content.get("episodes");
         }
         return objectMapper.createArrayNode();
-    }
-
-    private List<DiffResponse.SceneDiff> diffScenes(JsonNode fromEpisode, JsonNode toEpisode) {
-        List<DiffResponse.SceneDiff> diffs = new ArrayList<>();
-
-        JsonNode fromScenes = fromEpisode.has("scenes") ? fromEpisode.get("scenes") : objectMapper.createArrayNode();
-        JsonNode toScenes = toEpisode.has("scenes") ? toEpisode.get("scenes") : objectMapper.createArrayNode();
-
-        java.util.Map<String, JsonNode> fromSceneMap = new java.util.LinkedHashMap<>();
-        java.util.Map<String, JsonNode> toSceneMap = new java.util.LinkedHashMap<>();
-
-        if (fromScenes.isArray()) {
-            for (JsonNode s : fromScenes) {
-                String id = s.has("sceneId") ? s.get("sceneId").asText() : "unknown";
-                fromSceneMap.put(id, s);
-            }
-        }
-        if (toScenes.isArray()) {
-            for (JsonNode s : toScenes) {
-                String id = s.has("sceneId") ? s.get("sceneId").asText() : "unknown";
-                toSceneMap.put(id, s);
-            }
-        }
-
-        // Compare scenes present in both versions
-        for (java.util.Map.Entry<String, JsonNode> entry : fromSceneMap.entrySet()) {
-            String sceneId = entry.getKey();
-            if (toSceneMap.containsKey(sceneId)) {
-                List<DiffResponse.BeatDiff> beatDiffs = diffBeats(entry.getValue(), toSceneMap.get(sceneId));
-                if (!beatDiffs.isEmpty()) {
-                    diffs.add(new DiffResponse.SceneDiff(sceneId, List.of(), List.of(), beatDiffs));
-                }
-            }
-        }
-
-        return diffs;
-    }
-
-    private List<DiffResponse.BeatDiff> diffBeats(JsonNode fromScene, JsonNode toScene) {
-        List<DiffResponse.BeatDiff> diffs = new ArrayList<>();
-
-        JsonNode fromBeats = fromScene.has("beats") ? fromScene.get("beats") : objectMapper.createArrayNode();
-        JsonNode toBeats = toScene.has("beats") ? toScene.get("beats") : objectMapper.createArrayNode();
-
-        java.util.Map<String, JsonNode> fromBeatMap = new java.util.LinkedHashMap<>();
-        java.util.Map<String, JsonNode> toBeatMap = new java.util.LinkedHashMap<>();
-
-        if (fromBeats.isArray()) {
-            for (JsonNode b : fromBeats) {
-                String id = b.has("beatId") ? b.get("beatId").asText() : "unknown";
-                fromBeatMap.put(id, b);
-            }
-        }
-        if (toBeats.isArray()) {
-            for (JsonNode b : toBeats) {
-                String id = b.has("beatId") ? b.get("beatId").asText() : "unknown";
-                toBeatMap.put(id, b);
-            }
-        }
-
-        for (java.util.Map.Entry<String, JsonNode> entry : fromBeatMap.entrySet()) {
-            String beatId = entry.getKey();
-            JsonNode fromBeat = entry.getValue();
-            if (toBeatMap.containsKey(beatId)) {
-                JsonNode toBeat = toBeatMap.get(beatId);
-                // Compare key fields
-                for (String field : new String[]{"content", "character", "emotion", "type"}) {
-                    String oldVal = fromBeat.has(field) ? fromBeat.get(field).asText("") : "";
-                    String newVal = toBeat.has(field) ? toBeat.get(field).asText("") : "";
-                    if (!oldVal.equals(newVal)) {
-                        diffs.add(new DiffResponse.BeatDiff(beatId, field, oldVal, newVal));
-                    }
-                }
-            }
-        }
-
-        return diffs;
     }
 }

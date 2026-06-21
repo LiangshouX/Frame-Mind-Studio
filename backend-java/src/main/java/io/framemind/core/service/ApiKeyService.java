@@ -1,7 +1,7 @@
 package io.framemind.core.service;
 
-import io.framemind.core.dto.SettingsRequest;
-import io.framemind.core.dto.SettingsResponse;
+import io.framemind.core.service.dto.SettingsRequest;
+import io.framemind.core.service.dto.SettingsResponse;
 
 import java.util.List;
 

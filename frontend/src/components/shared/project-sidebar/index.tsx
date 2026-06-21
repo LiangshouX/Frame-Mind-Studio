@@ -15,15 +15,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  {
-    id: 'scriptmind',
-    label: '剧本工厂',
-    icon: <PenTool className="h-4 w-4" />,
-    children: [
-      { id: 'outline', label: '大纲', icon: <FileText className="h-3.5 w-3.5" />, path: '/scriptmind/outline' },
-      { id: 'editor', label: '编辑器', icon: <PenTool className="h-3.5 w-3.5" />, path: '/scriptmind' },
-    ],
-  },
+  { id: 'scriptmind', label: '剧本工厂', icon: <PenTool className="h-4 w-4" />, path: '/scriptmind' },
   { id: 'storyboard', label: '分镜', icon: <Clapperboard className="h-4 w-4" />, path: '/storyboard', disabled: true },
   { id: 'styleforge', label: '风格', icon: <Palette className="h-4 w-4" />, path: '/styleforge', disabled: true },
   { id: 'motioncore', label: '动态', icon: <Zap className="h-4 w-4" />, path: '/motioncore', disabled: true },

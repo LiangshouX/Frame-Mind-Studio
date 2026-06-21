@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createEditor, Descendant, Element as SlateElement } from 'slate'
 import { Slate, Editable, withReact, RenderElementProps } from 'slate-react'
 import { withHistory } from 'slate-history'
-import { Script, ScriptContent, ScriptEpisode, ScriptScene, ScriptBeat, ElementType } from '@/types/script'
+import { Script, ScriptContent, TraditionalScriptContent, ScriptEpisode, ScriptScene, ScriptBeat, ElementType } from '@/types/script'
 import { useEditorStore } from '@/stores/editor-store'
 import { ELEMENT_TYPE_NEXT, ENTER_DEFAULT_AFTER } from '@/constants/element-types'
 import { debounce } from '@/lib/utils/debounce'
@@ -33,16 +33,44 @@ const ELEMENT_CLASSNAMES: Record<string, string> = {
 }
 
 function scriptToSlate(script: Script | null): Descendant[] {
-  if (!script?.content?.episodes?.length) return [{ type: 'action', children: [{ text: '' }] } as Descendant]
+  if (!script?.content) return [{ type: 'action', children: [{ text: '' }] } as Descendant]
+
   const nodes: Descendant[] = []
-  for (const ep of script.content.episodes) {
-    for (const scene of ep.scenes) {
-      nodes.push({ type: 'scene_heading', children: [{ text: `${scene.location} — ${scene.time}` }] } as Descendant)
-      for (const beat of scene.beats) {
-        nodes.push({ type: beat.type === 'dialogue' ? 'dialogue' : beat.type === 'transition' ? 'transition' : 'action', children: [{ text: beat.character ? `${beat.character}: ${beat.content}` : beat.content }] } as Descendant)
+
+  // 判断是微短剧模型还是传统影视模型
+  if ('episodes' in script.content) {
+    // 微短剧模型：episode → scene → beat
+    const content = script.content as ScriptContent
+    if (!content.episodes?.length) return [{ type: 'action', children: [{ text: '' }] } as Descendant]
+    for (const ep of content.episodes) {
+      for (const scene of ep.scenes) {
+        nodes.push({ type: 'scene_heading', children: [{ text: `${scene.location} — ${scene.time}` }] } as Descendant)
+        for (const beat of scene.beats) {
+          nodes.push({ type: beat.type === 'dialogue' ? 'dialogue' : beat.type === 'transition' ? 'transition' : 'action', children: [{ text: beat.character ? `${beat.character}: ${beat.content}` : beat.content }] } as Descendant)
+        }
+      }
+    }
+  } else if ('acts' in script.content) {
+    // 传统影视模型：act → sequence → scene → block
+    const content = script.content as TraditionalScriptContent
+    if (!content.acts?.length) return [{ type: 'action', children: [{ text: '' }] } as Descendant]
+    for (const act of content.acts) {
+      nodes.push({ type: 'scene_heading', children: [{ text: `第${act.actNumber}幕: ${act.actName}` }] } as Descendant)
+      for (const seq of act.sequences) {
+        nodes.push({ type: 'action', children: [{ text: `[${seq.sequenceName}] ${seq.plotPoint}` }] } as Descendant)
+        for (const scene of seq.scenes) {
+          nodes.push({ type: 'scene_heading', children: [{ text: scene.slugline }] } as Descendant)
+          for (const block of scene.blocks) {
+            nodes.push({
+              type: block.blockType === 'dialogue' ? 'dialogue' : block.blockType === 'transition' ? 'transition' : 'action',
+              children: [{ text: block.characterName ? `${block.characterName}: ${block.content}` : block.content }]
+            } as Descendant)
+          }
+        }
       }
     }
   }
+
   return nodes.length > 0 ? nodes : [{ type: 'action', children: [{ text: '' }] } as Descendant]
 }
 
@@ -195,10 +223,11 @@ export function ScriptEditor({ projectId, script }: ScriptEditorProps) {
   const slateKey = useMemo(() => script?.id || script?.content?.title || 'empty', [script])
 
   const performSave = useCallback(async (changeSummary?: string) => {
+    // 根据内容类型决定保存格式
     const content = slateToScript(
       editorRef.current.children,
       script?.content?.title || script?.title || '',
-      script?.content?.totalEpisodes || 1,
+      script?.content && 'totalEpisodes' in script.content ? script.content.totalEpisodes : 1,
     )
     setSaving(true)
     try {
