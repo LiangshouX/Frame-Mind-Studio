@@ -8,8 +8,7 @@ import { useProjectStore } from '@/stores/project-store'
 const GENRE_OPTIONS = ['都市', '复仇', '逆袭', '甜宠', '悬疑', '古风', '搞笑', '科幻', '校园', '职场']
 const FORMAT_OPTIONS = [
   { value: 'short_drama', label: '短剧' },
-  { value: 'comic', label: '漫画' },
-  { value: 'movie', label: '电影' },
+  { value: 'movie', label: '微电影' },
 ]
 
 export default function NewProjectPage() {

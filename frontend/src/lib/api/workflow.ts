@@ -214,7 +214,10 @@ export async function exportJson(projectId: string): Promise<Record<string, unkn
   return apiFetch<Record<string, unknown>>(`/projects/${projectId}/export/json`)
 }
 
-/** 导出为 Fountain */
+/** 导出为 Fountain（返回纯文本，不用 apiFetch 的 JSON 解析） */
 export async function exportFountain(projectId: string): Promise<string> {
-  return apiFetch<string>(`/projects/${projectId}/export/fountain`)
+  const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/projects/${projectId}/export/fountain`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.text()
 }

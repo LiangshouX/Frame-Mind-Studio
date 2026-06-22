@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Loader2, Save, Sparkles, Globe, BookOpen, MapPin, Palette } from 'lucide-react'
+import { Loader2, Save, Sparkles, Globe, BookOpen, MapPin, Palette, Upload } from 'lucide-react'
 import { WorldSettingContent } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
 
 interface WorldviewPanelProps {
   projectId: string
   onGenerate?: () => void
+  onSkip?: () => void
+  onUpload?: () => void
 }
 
 const DEFAULT_CONTENT: WorldSettingContent = {
@@ -22,7 +24,7 @@ const DEFAULT_CONTENT: WorldSettingContent = {
   themes: [],
 }
 
-export function WorldviewPanel({ projectId, onGenerate }: WorldviewPanelProps) {
+export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: WorldviewPanelProps) {
   const [content, setContent] = useState<WorldSettingContent>(DEFAULT_CONTENT)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -114,6 +116,23 @@ export function WorldviewPanel({ projectId, onGenerate }: WorldviewPanelProps) {
       <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
         <h3 className="text-lg font-bold text-[var(--text-primary)]">创意及世界观设定</h3>
         <div className="flex items-center gap-2">
+          {onSkip && (
+            <button
+              onClick={onSkip}
+              className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              跳过此步
+            </button>
+          )}
+          {onUpload && (
+            <button
+              onClick={onUpload}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-[var(--border)] rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              上传已有内容
+            </button>
+          )}
           <button
             onClick={handleGenerate}
             disabled={generating}

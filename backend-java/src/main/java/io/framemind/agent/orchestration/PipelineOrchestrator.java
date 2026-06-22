@@ -261,6 +261,166 @@ public class PipelineOrchestrator {
     }
 
     // -----------------------------------------------------------------------
+    //  Character Generation
+    // -----------------------------------------------------------------------
+
+    /**
+     * Execute character generation: design characters based on world setting and synopsis.
+     */
+    @Async
+    @Transactional
+    public CompletableFuture<AgentOrchestrationResult> executeCharacterGeneration(
+            String sessionId, UUID projectId, String worldSetting, String synopsis) {
+
+        log.info("Starting character generation: session={}, project={}", sessionId, projectId);
+        updateSessionStatus(sessionId, "running");
+
+        try {
+            int totalTokens = 0;
+            ObjectNode pipelineOutput = objectMapper.createObjectNode();
+
+            String prompt = String.format(
+                    "请根据以下世界观设定和故事梗概，设计完整的角色卡片。\n\n"
+                            + "## 世界观设定\n%s\n\n"
+                            + "## 故事梗概\n%s\n\n"
+                            + "请输出 JSON 数组格式的角色卡片，每个角色包含 name, role, gender, personality, "
+                            + "appearance, background, goal, arc, relationships, dialogueStyle 等字段。"
+                            + "至少设计 3-6 个角色，主角和反派必须有深度。",
+                    worldSetting != null ? worldSetting : "暂无世界观设定",
+                    synopsis != null ? synopsis : "暂无故事梗概");
+
+            String output = executeStage(sessionId, "character_designer", prompt);
+            totalTokens += estimateTokens(output);
+            budgetHook.consumeTokens(projectId, estimateTokens(output), sessionId);
+            pipelineOutput.set("characters", parseJsonSafe(output));
+
+            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
+            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
+
+            log.info("Character generation completed: session={}, tokens={}", sessionId, totalTokens);
+            return CompletableFuture.completedFuture(
+                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
+
+        } catch (Exception e) {
+            log.error("Character generation failed: session={}", sessionId, e);
+            streamingHook.onError(sessionId, "CHARACTER_ERROR", e.getMessage());
+            updateSessionFailed(sessionId, e.getMessage());
+            return CompletableFuture.completedFuture(
+                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    //  Script Generation
+    // -----------------------------------------------------------------------
+
+    /**
+     * Execute script generation: expand outline into full screenplay.
+     */
+    @Async
+    @Transactional
+    public CompletableFuture<AgentOrchestrationResult> executeScriptGeneration(
+            String sessionId, UUID projectId, String outline, String characters) {
+
+        log.info("Starting script generation: session={}, project={}", sessionId, projectId);
+        updateSessionStatus(sessionId, "running");
+
+        try {
+            int totalTokens = 0;
+            ObjectNode pipelineOutput = objectMapper.createObjectNode();
+
+            // Showrunner expands the outline into a full script
+            String expandPrompt = String.format(
+                    "请将以下大纲扩展为完整的剧本内容。\n\n"
+                            + "## 故事大纲\n%s\n\n"
+                            + "## 角色设定\n%s\n\n"
+                            + "请输出 JSON 格式的完整剧本，遵循 ScriptContent schema：\n"
+                            + "{ \"title\": \"...\", \"episodes\": [ { \"episodeNumber\": 1, \"title\": \"...\", "
+                            + "\"scenes\": [ { \"sceneId\": \"...\", \"location\": \"...\", \"time\": \"...\", "
+                            + "\"beats\": [ { \"beatId\": \"...\", \"type\": \"action/dialogue/scene_heading\", "
+                            + "\"content\": \"...\", \"character\": \"...\", \"emotion\": \"...\" } ] } ] } ] }\n\n"
+                            + "每集至少 3-5 个场景，每个场景 3-6 个节拍，包含对白和动作描写。",
+                    outline, characters != null ? characters : "暂无角色设定");
+
+            String expandedOutput = executeStage(sessionId, "showrunner", expandPrompt);
+            totalTokens += estimateTokens(expandedOutput);
+            budgetHook.consumeTokens(projectId, estimateTokens(expandedOutput), sessionId);
+            pipelineOutput.set("script", parseJsonSafe(expandedOutput));
+
+            // Script Doctor reviews the expanded script
+            String reviewPrompt = "请快速审校以下剧本的质量，指出主要问题：\n\n" + expandedOutput;
+            String reviewOutput = executeStage(sessionId, "script_doctor", reviewPrompt);
+            totalTokens += estimateTokens(reviewOutput);
+            budgetHook.consumeTokens(projectId, estimateTokens(reviewOutput), sessionId);
+            pipelineOutput.set("quality_review", parseJsonSafe(reviewOutput));
+
+            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
+            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
+
+            log.info("Script generation completed: session={}, tokens={}", sessionId, totalTokens);
+            return CompletableFuture.completedFuture(
+                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
+
+        } catch (Exception e) {
+            log.error("Script generation failed: session={}", sessionId, e);
+            streamingHook.onError(sessionId, "SCRIPT_ERROR", e.getMessage());
+            updateSessionFailed(sessionId, e.getMessage());
+            return CompletableFuture.completedFuture(
+                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    //  Script Review
+    // -----------------------------------------------------------------------
+
+    /**
+     * Execute script review: review script content for quality issues.
+     */
+    @Async
+    @Transactional
+    public CompletableFuture<AgentOrchestrationResult> executeReview(
+            String sessionId, UUID projectId, String scriptContent, String foreshadowInfo) {
+
+        log.info("Starting script review: session={}, project={}", sessionId, projectId);
+        updateSessionStatus(sessionId, "running");
+
+        try {
+            int totalTokens = 0;
+            ObjectNode pipelineOutput = objectMapper.createObjectNode();
+
+            String reviewPrompt = String.format(
+                    "请审校以下剧本的整体质量，提供详细的审校报告。\n\n"
+                            + "## 剧本内容\n%s\n\n"
+                            + "%s\n\n"
+                            + "请输出 JSON 格式的审校报告，包含 overall_score, strengths, issues, suggestions, "
+                            + "foreshadow_status, rhythm_analysis 等字段。"
+                            + "issues 数组中每个元素包含 severity, location, category, description, suggestion。",
+                    scriptContent,
+                    foreshadowInfo != null ? foreshadowInfo : "");
+
+            String reviewOutput = executeStage(sessionId, "script_doctor", reviewPrompt);
+            totalTokens += estimateTokens(reviewOutput);
+            budgetHook.consumeTokens(projectId, estimateTokens(reviewOutput), sessionId);
+            pipelineOutput.set("review_report", parseJsonSafe(reviewOutput));
+
+            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
+            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
+
+            log.info("Script review completed: session={}, tokens={}", sessionId, totalTokens);
+            return CompletableFuture.completedFuture(
+                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
+
+        } catch (Exception e) {
+            log.error("Script review failed: session={}", sessionId, e);
+            streamingHook.onError(sessionId, "REVIEW_ERROR", e.getMessage());
+            updateSessionFailed(sessionId, e.getMessage());
+            return CompletableFuture.completedFuture(
+                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
     //  Segment Optimization
     // -----------------------------------------------------------------------
 

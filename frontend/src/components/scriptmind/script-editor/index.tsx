@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { createEditor, Descendant, Element as SlateElement } from 'slate'
 import { Slate, Editable, withReact, RenderElementProps } from 'slate-react'
 import { withHistory } from 'slate-history'
-import { Script, ScriptContent, TraditionalScriptContent, ScriptEpisode, ScriptScene, ScriptBeat, ElementType } from '@/types/script'
+import { Script, ScriptContent, TraditionalScriptContent, ScriptEpisode, ScriptScene, ScriptBeat, ElementType, SceneNavItem } from '@/types/script'
 import { useEditorStore } from '@/stores/editor-store'
 import { ELEMENT_TYPE_NEXT, ENTER_DEFAULT_AFTER } from '@/constants/element-types'
 import { debounce } from '@/lib/utils/debounce'
@@ -214,10 +214,31 @@ function slateToScript(nodes: Descendant[], title = '', totalEpisodes = 1): Scri
   }
 }
 
+/** 从 Slate 节点中提取场景列表 */
+function extractSceneList(nodes: Descendant[]): SceneNavItem[] {
+  const scenes: SceneNavItem[] = []
+  let sceneIndex = 0
+  for (const node of nodes) {
+    const el = node as CustomElement
+    if (el.type === 'scene_heading') {
+      const text = el.children?.map((c: CustomText) => c.text).join('') || ''
+      const parts = text.split('—').map((s) => s.trim())
+      sceneIndex++
+      scenes.push({
+        sceneId: `S${sceneIndex}`,
+        sceneNumber: sceneIndex,
+        location: parts[0] || text,
+        episodeNumber: 1,
+      })
+    }
+  }
+  return scenes
+}
+
 export function ScriptEditor({ projectId, script }: ScriptEditorProps) {
   const editor = useMemo(() => withHistory(withReact(createEditor())), [])
   const editorRef = useRef(editor)
-  const { currentElementType, setDirty, setSaving, markSaved, saveRequestCount } = useEditorStore()
+  const { currentElementType, setDirty, setSaving, markSaved, saveRequestCount, setSceneList } = useEditorStore()
   const initialValue = useMemo(() => scriptToSlate(script), [script])
   // Key forces Slate to re-mount when script data changes (e.g. after async load or restore)
   const slateKey = useMemo(() => script?.id || script?.content?.title || 'empty', [script])
@@ -233,14 +254,15 @@ export function ScriptEditor({ projectId, script }: ScriptEditorProps) {
     try {
       await scriptsApi.updateScript(projectId, content, changeSummary)
       markSaved()
-    } catch {
+    } catch (error) {
+      console.error('Failed to save script:', error)
       setSaving(false)
     }
   }, [projectId, script, setSaving, markSaved])
 
   const autoSave = useMemo(() => debounce(async () => {
     await performSave()
-  }, 30_000), [performSave])
+  }, 5_000), [performSave])
 
   const handleManualSave = useCallback(async () => {
     autoSave.cancel()
@@ -256,7 +278,33 @@ export function ScriptEditor({ projectId, script }: ScriptEditorProps) {
     }
   }, [saveRequestCount, handleManualSave])
 
-  const handleChange = useCallback(() => { setDirty(true); autoSave() }, [setDirty, autoSave])
+  // 初始化时提取场景列表
+  useEffect(() => {
+    const scenes = extractSceneList(initialValue)
+    setSceneList(scenes)
+  }, [initialValue, setSceneList])
+
+  // 当 script 数据变化时（如从后端加载），同步更新 Slate 编辑器
+  useEffect(() => {
+    if (script?.content) {
+      const newNodes = scriptToSlate(script)
+      // 只在内容实际变化时更新（避免循环）
+      const currentText = JSON.stringify(editorRef.current.children)
+      const newText = JSON.stringify(newNodes)
+      if (currentText !== newText) {
+        editorRef.current.children = newNodes
+        editorRef.current.onChange()
+      }
+    }
+  }, [script?.content])
+
+  const handleChange = useCallback(() => {
+    setDirty(true)
+    autoSave()
+    // 提取场景列表并更新
+    const scenes = extractSceneList(editorRef.current.children)
+    setSceneList(scenes)
+  }, [setDirty, autoSave, setSceneList])
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Tab') {

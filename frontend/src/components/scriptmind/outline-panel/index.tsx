@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Loader2, Save, Sparkles, List, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Save, Sparkles, List, ChevronDown, ChevronRight, Plus, Trash2, RefreshCw, ClipboardCheck } from 'lucide-react'
 import { OutlineContent, OutlineEpisode, OutlineAct } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
 
@@ -9,9 +9,10 @@ interface OutlinePanelProps {
   projectId: string
   projectType?: 'short_drama' | 'feature_film'
   onGenerate?: () => void
+  onReview?: () => void
 }
 
-export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerate }: OutlinePanelProps) {
+export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerate, onReview }: OutlinePanelProps) {
   const [content, setContent] = useState<OutlineContent>({})
   const [format, setFormat] = useState<'episode_list' | 'act_structure'>('episode_list')
   const [loading, setLoading] = useState(true)
@@ -107,6 +108,17 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
     setContent({ ...content, episodes })
   }
 
+  // 重新生成单集
+  const regenerateEpisode = async (episodeNumber: number) => {
+    try {
+      await workflowApi.updateOutlineEpisode(projectId, episodeNumber, {})
+      await loadOutline()
+      onGenerate?.()
+    } catch (error) {
+      console.error('Failed to regenerate episode:', error)
+    }
+  }
+
   // 传统影视模式：幕次结构
   const addAct = () => {
     const acts = content.acts || []
@@ -171,6 +183,15 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
             )}
             AI 生成
           </button>
+          {onReview && (
+            <button
+              onClick={onReview}
+              className="btn btn-outline flex items-center gap-2"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              AI 审查
+            </button>
+          )}
           <button
             onClick={handleSave}
             disabled={saving}
@@ -215,8 +236,16 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
                     {Math.floor(episode.durationSeconds / 60)}分钟
                   </span>
                   <button
+                    onClick={e => { e.stopPropagation(); regenerateEpisode(episode.episodeNumber) }}
+                    className="text-[var(--text-muted)] hover:text-[var(--accent)] p-1"
+                    title="重新生成"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={e => { e.stopPropagation(); removeEpisode(index) }}
                     className="text-[var(--error)] hover:text-[var(--error-dark)] p-1"
+                    title="删除"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

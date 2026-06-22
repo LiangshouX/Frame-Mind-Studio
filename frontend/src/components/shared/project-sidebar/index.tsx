@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronRight, FileText, PenTool, Clapperboard, Palette, Zap, Mic, Download } from 'lucide-react'
+import { ChevronRight, FileText, PenTool, Clapperboard, Palette, Zap, Mic } from 'lucide-react'
 
 interface NavItem {
   id: string
@@ -20,7 +20,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'styleforge', label: '风格', icon: <Palette className="h-4 w-4" />, path: '/styleforge', disabled: true },
   { id: 'motioncore', label: '动态', icon: <Zap className="h-4 w-4" />, path: '/motioncore', disabled: true },
   { id: 'voicestage', label: '配音', icon: <Mic className="h-4 w-4" />, path: '/voicestage', disabled: true },
-  { id: 'export', label: '导出', icon: <Download className="h-4 w-4" />, path: '/export', disabled: true },
 ]
 
 interface ProjectSidebarProps {
