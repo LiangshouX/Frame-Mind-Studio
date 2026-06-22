@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2, Save, Sparkles, FileText, AlertTriangle, Zap, Heart, ChevronDown, ChevronRight } from 'lucide-react'
 import { SynopsisContent } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
+import { useToast } from '@/components/shared/toast/toast-context'
 
 interface SynopsisPanelProps {
   projectId: string
@@ -25,6 +26,7 @@ export function SynopsisPanel({ projectId, onGenerate, onSkip }: SynopsisPanelPr
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
+  const { showToast } = useToast()
 
   useEffect(() => {
     loadSynopsis()
@@ -53,8 +55,10 @@ export function SynopsisPanel({ projectId, onGenerate, onSkip }: SynopsisPanelPr
     setSaving(true)
     try {
       await workflowApi.saveSynopsis(projectId, content)
+      showToast('保存成功', 'success')
     } catch (error) {
       console.error('Failed to save synopsis:', error)
+      showToast('保存失败', 'error')
     } finally {
       setSaving(false)
     }

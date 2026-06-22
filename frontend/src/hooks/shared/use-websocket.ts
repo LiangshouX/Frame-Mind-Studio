@@ -47,6 +47,11 @@ export function useAgentWebSocket(sessionId: string | null) {
     }
   }, [setStage, appendStream, setReviewing, setRunning, setTokens, setBudgetWarning, addMessage, finishStreaming])
 
+  // 手动重连函数
+  const reconnect = useCallback(() => {
+    connRef.current?.reconnect()
+  }, [])
+
   useEffect(() => {
     if (!sessionId) return
 
@@ -55,10 +60,15 @@ export function useAgentWebSocket(sessionId: string | null) {
       onConnectionChange: setConnectionStatus,
     })
 
+    // 监听手动重连事件
+    const handleReconnectEvent = () => reconnect()
+    window.addEventListener('ws-reconnect', handleReconnectEvent)
+
     return () => {
+      window.removeEventListener('ws-reconnect', handleReconnectEvent)
       connRef.current?.disconnect()
     }
-  }, [sessionId, handleMessage, setConnectionStatus])
+  }, [sessionId, handleMessage, setConnectionStatus, reconnect])
 
   return connRef.current
 }

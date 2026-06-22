@@ -1,6 +1,7 @@
 package io.framemind.modules.scriptmind.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.framemind.modules.scriptmind.dto.OutlineResponse;
 import io.framemind.modules.scriptmind.service.OutlineService;
 import jakarta.validation.Valid;
@@ -26,6 +27,7 @@ import java.util.UUID;
 public class OutlineController {
 
     private final OutlineService outlineService;
+    private final ObjectMapper objectMapper;
 
     /**
      * 获取大纲。
@@ -43,7 +45,8 @@ public class OutlineController {
     public ResponseEntity<OutlineResponse> saveOutline(
             @PathVariable UUID projectId,
             @Valid @RequestBody Map<String, Object> request) {
-        JsonNode content = (JsonNode) request.get("content");
+        // 将 Map 转换为 JsonNode，避免 ClassCastException
+        JsonNode content = objectMapper.valueToTree(request.get("content"));
         String format = (String) request.get("format");
         return ResponseEntity.ok(outlineService.saveOutline(projectId, content, format));
     }

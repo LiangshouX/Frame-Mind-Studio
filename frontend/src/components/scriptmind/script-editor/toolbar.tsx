@@ -50,7 +50,7 @@ export function EditorToolbar({ activeTab, onTabChange, onSave, onAIGenerate, on
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-card)]">
       {/* 左侧：功能标签 */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 flex-shrink-0">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -66,16 +66,16 @@ export function EditorToolbar({ activeTab, onTabChange, onSave, onAIGenerate, on
         ))}
       </div>
 
-      <div className="flex-1" />
+      <div className="flex-1 min-w-0" />
 
       {/* 右侧：质量评估 + AI 按钮 + 保存 */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-shrink-0">
         {/* 质量评估按钮 */}
         {projectId && (
           <button
             onClick={handleQualityClick}
             disabled={loadingQuality}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-[var(--border)] rounded-lg hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-[var(--border)] rounded-lg hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 whitespace-nowrap"
             title="质量评估"
           >
             {loadingQuality ? (

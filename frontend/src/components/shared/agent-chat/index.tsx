@@ -49,9 +49,25 @@ export function AgentChat({ projectId, onSend, onApprove, onRevise }: AgentChatP
           <span className={`w-1.5 h-1.5 rounded-full ${
             connectionStatus === 'connected' ? 'bg-[var(--accent)]' :
             connectionStatus === 'connecting' ? 'bg-[var(--gold)] animate-pulse' :
+            connectionStatus === 'error' ? 'bg-red-500' :
             'bg-[var(--text-muted)]'
           }`} />
-          {connectionStatus === 'connected' ? '已连接' : connectionStatus === 'connecting' ? '连接中...' : '未连接'}
+          {connectionStatus === 'connected' ? '已连接' :
+           connectionStatus === 'connecting' ? '连接中...' :
+           connectionStatus === 'error' ? (
+            <span className="flex items-center gap-1">
+              未连接
+              <button
+                onClick={() => {
+                  // 触发重连事件，由父组件处理
+                  window.dispatchEvent(new CustomEvent('ws-reconnect'))
+                }}
+                className="text-[var(--accent)] hover:underline ml-1"
+              >
+                重试
+              </button>
+            </span>
+          ) : '未连接'}
         </span>
         <span>Token: {tokensConsumed.toLocaleString()}</span>
       </div>

@@ -75,4 +75,6 @@ docker-compose.override.yml
 .claude/
 .specify/
 .codegraph/
+test_screenshots/
 .lib-repo/
+*.py

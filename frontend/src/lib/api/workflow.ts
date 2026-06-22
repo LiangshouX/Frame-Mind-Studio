@@ -17,11 +17,12 @@ import type {
 
 // ─── 世界观设定 ──────────────────────────────────────────────────
 
-/** 获取世界观设定 */
+/** 获取世界观设定（404 表示尚未创建，返回 null） */
 export async function getWorldSetting(projectId: string): Promise<WorldSetting | null> {
   try {
     return await apiFetch<WorldSetting>(`/projects/${projectId}/world-setting`)
-  } catch {
+  } catch (error: any) {
+    if (error?.status === 404) return null
     return null
   }
 }
@@ -39,11 +40,12 @@ export async function saveWorldSetting(
 
 // ─── 梗概 ────────────────────────────────────────────────────────
 
-/** 获取梗概 */
+/** 获取梗概（404 表示尚未创建，返回 null） */
 export async function getSynopsis(projectId: string): Promise<Synopsis | null> {
   try {
     return await apiFetch<Synopsis>(`/projects/${projectId}/synopsis`)
-  } catch {
+  } catch (error: any) {
+    if (error?.status === 404) return null
     return null
   }
 }
@@ -61,11 +63,14 @@ export async function saveSynopsis(
 
 // ─── 大纲 ────────────────────────────────────────────────────────
 
-/** 获取大纲 */
+/** 获取大纲（404 表示尚未创建，返回 null） */
 export async function getOutline(projectId: string): Promise<Outline | null> {
   try {
     return await apiFetch<Outline>(`/projects/${projectId}/outline`)
-  } catch {
+  } catch (error: any) {
+    // 404 表示大纲尚未创建，静默处理
+    if (error?.status === 404) return null
+    // 其他错误也返回 null，由 UI 展示空状态
     return null
   }
 }

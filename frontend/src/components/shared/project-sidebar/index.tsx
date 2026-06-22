@@ -115,10 +115,15 @@ export function ProjectSidebar({ projectId }: ProjectSidebarProps) {
             return (
               <div
                 key={item.id}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] opacity-40 cursor-not-allowed"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] opacity-40 cursor-not-allowed group relative"
+                title="即将推出"
               >
                 {item.icon}
                 {item.label}
+                {/* Tooltip */}
+                <span className="absolute left-full ml-2 px-2 py-1 text-xs bg-[var(--bg-card)] border border-[var(--border)] rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                  即将推出
+                </span>
               </div>
             )
           }

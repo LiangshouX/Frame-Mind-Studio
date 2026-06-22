@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2, Save, Sparkles, List, ChevronDown, ChevronRight, Plus, Trash2, RefreshCw, ClipboardCheck } from 'lucide-react'
 import { OutlineContent, OutlineEpisode, OutlineAct } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
+import { useToast } from '@/components/shared/toast/toast-context'
 
 interface OutlinePanelProps {
   projectId: string
@@ -19,6 +20,7 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
+  const { showToast } = useToast()
 
   useEffect(() => {
     loadOutline()
@@ -47,8 +49,10 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
     setSaving(true)
     try {
       await workflowApi.saveOutline(projectId, content, format)
+      showToast('保存成功', 'success')
     } catch (error) {
       console.error('Failed to save outline:', error)
+      showToast('保存失败', 'error')
     } finally {
       setSaving(false)
     }

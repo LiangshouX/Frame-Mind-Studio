@@ -43,7 +43,7 @@ export default function ProjectWorkbenchPage() {
             <p className="text-base text-[var(--text-secondary)] max-w-md mb-6 leading-relaxed">
               在右侧 Agent 面板中输入一句话梗概，AI 团队将为你生成结构化大纲。你可以实时查看生成进度，并在完成后审核修改。
             </p>
-            <div className="flex items-center gap-3 text-sm text-[var(--text-muted)]">
+            <div className="flex items-center gap-3 text-sm text-[var(--text-muted)] mb-6">
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-hover)] border border-[var(--border-light)]">
                 <FileText className="h-3.5 w-3.5" />
                 支持风格预设
@@ -53,6 +53,15 @@ export default function ProjectWorkbenchPage() {
                 流式生成
               </span>
             </div>
+            {/* 始终显示进入 ScriptMind 的按钮 */}
+            <button
+              onClick={() => router.push(`/projects/${projectId}/scriptmind`)}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              开始创作
+              <ArrowRight className="h-4 w-4" />
+            </button>
           </div>
         )}
       </div>

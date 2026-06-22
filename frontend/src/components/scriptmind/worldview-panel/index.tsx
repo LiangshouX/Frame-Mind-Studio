@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2, Save, Sparkles, Globe, BookOpen, MapPin, Palette, Upload } from 'lucide-react'
 import { WorldSettingContent } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
+import { useToast } from '@/components/shared/toast/toast-context'
 
 interface WorldviewPanelProps {
   projectId: string
@@ -29,6 +30,7 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const { showToast } = useToast()
 
   useEffect(() => {
     loadWorldSetting()
@@ -58,8 +60,10 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
     setSaving(true)
     try {
       await workflowApi.saveWorldSetting(projectId, content)
+      showToast('保存成功', 'success')
     } catch (error) {
       console.error('Failed to save world setting:', error)
+      showToast('保存失败', 'error')
     } finally {
       setSaving(false)
     }
