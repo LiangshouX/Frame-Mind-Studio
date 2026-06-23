@@ -35,9 +35,16 @@ public class FramemindConfigProperties {
     }
 
     /**
-     * Returns the path to the config.json file.
+     * Returns the path to the provider_model_config.json file.
      */
     public Path getConfigFilePath() {
+        return getConfigDir().resolve("provider_model_config.json");
+    }
+
+    /**
+     * Returns the path to the old config.json file (for migration).
+     */
+    public Path getOldConfigFilePath() {
         return getConfigDir().resolve("config.json");
     }
 }

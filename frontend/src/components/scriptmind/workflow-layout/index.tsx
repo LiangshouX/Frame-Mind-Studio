@@ -34,6 +34,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
     addCollapsibleBlock,
     updateCollapsibleBlock,
     sessions,
+    getModelSelection,
   } = useAgentStore()
 
   const wsRef = useRef<ReturnType<typeof connectAgentWebSocket> | null>(null)
@@ -202,7 +203,11 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
       setRunning(true)
 
       try {
-        const result = await sendChatMessage(projectId, step, text)
+        const modelSel = getModelSelection(step)
+        const result = await sendChatMessage(
+          projectId, step, text, undefined,
+          modelSel?.providerId, modelSel?.modelName
+        )
         setSession(result.session_id)
 
         // 断开旧连接
@@ -229,7 +234,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         })
       }
     },
-    [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus]
+    [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection]
   )
 
   // AI 一键生成
@@ -245,7 +250,11 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         script: 'generate_script',
       }
 
-      const result = await triggerGeneration(projectId, step, actionMap[step] || 'generate')
+      const modelSel = getModelSelection(step)
+      const result = await triggerGeneration(
+        projectId, step, actionMap[step] || 'generate',
+        modelSel?.providerId, modelSel?.modelName
+      )
       setSession(result.session_id)
 
       if (wsRef.current) {
@@ -269,7 +278,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         timestamp: new Date().toISOString(),
       })
     }
-  }, [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus])
+  }, [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection])
 
   return (
     <div className="flex h-full overflow-hidden">

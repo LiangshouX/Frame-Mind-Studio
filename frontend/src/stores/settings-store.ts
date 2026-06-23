@@ -11,6 +11,7 @@ import type {
   McpServerConfigRequest,
   DefaultModel,
   DefaultModelRequest,
+  ProviderWithModels,
 } from '@/types/settings'
 
 interface SettingsStore {
@@ -24,6 +25,7 @@ interface SettingsStore {
   tools: ToolConfig[]
   mcpServers: McpServerConfig[]
   defaultModel: DefaultModel | null
+  availableModels: ProviderWithModels[]
   isLoading: boolean
   testResult: ConnectivityTestResult | null
 
@@ -55,6 +57,9 @@ interface SettingsStore {
   fetchDefaultModel: () => Promise<void>
   updateDefaultModel: (config: DefaultModelRequest) => Promise<void>
 
+  // Available models actions
+  fetchAvailableModels: () => Promise<void>
+
   clearTestResult: () => void
 }
 
@@ -66,6 +71,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   tools: [],
   mcpServers: [],
   defaultModel: null,
+  availableModels: [],
   isLoading: false,
   testResult: null,
 
@@ -203,6 +209,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   updateDefaultModel: async (config) => {
     await settingsApi.updateDefaultModel(config)
     await get().fetchDefaultModel()
+  },
+
+  // --- Available models actions ---
+  fetchAvailableModels: async () => {
+    try {
+      const models = await settingsApi.getAvailableModels()
+      set({ availableModels: Array.isArray(models) ? models : [] })
+    } catch {
+      set({ availableModels: [] })
+    }
   },
 
   clearTestResult: () => set({ testResult: null }),

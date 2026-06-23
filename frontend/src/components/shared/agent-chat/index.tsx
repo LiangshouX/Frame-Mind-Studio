@@ -6,6 +6,7 @@ import { MessageList } from './message-list'
 import { InputBar } from './input-bar'
 import { BudgetWarning } from './budget-warning'
 import { AgentConfigDrawer } from './agent-config-drawer'
+import { ModelSelector } from './model-selector'
 import { useAgentStore } from '@/stores/agent-store'
 import type { WorkflowStep } from '@/types/agent'
 
@@ -77,6 +78,9 @@ export function AgentChat({
 
         {/* 输入栏 */}
         <InputBar onSend={onSend} disabled={isRunning} />
+
+        {/* 模型选择器 */}
+        <ModelSelector workflowStep={workflowStep} />
 
         {/* 底部状态栏 */}
         <div className="px-5 py-2.5 border-t border-[var(--border-light)] flex items-center justify-between text-xs text-[var(--text-muted)]">

@@ -34,6 +34,12 @@ export interface AgentConfig {
   version: number
 }
 
+/** 模型选择（供应商 + 模型） */
+export interface ModelSelection {
+  providerId: string
+  modelName: string
+}
+
 /** Agent 会话 */
 export interface AgentSession {
   id: string

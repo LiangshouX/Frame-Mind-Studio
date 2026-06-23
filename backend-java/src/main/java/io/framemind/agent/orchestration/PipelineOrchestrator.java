@@ -73,19 +73,23 @@ public class PipelineOrchestrator {
      * @param projectId     项目 ID
      * @param workflowStep  工作流步骤
      * @param userMessage   用户消息
+     * @param providerId    供应商 ID（可选，为 null 时使用默认）
+     * @param modelName     模型名称（可选，为 null 时使用默认）
      * @return 会话 ID
      */
     @Async
     @Transactional
     public CompletableFuture<String> dispatchToAgent(UUID projectId, String workflowStep,
-                                                     String userMessage) {
+                                                     String userMessage,
+                                                     String providerId, String modelName) {
         String agentName = STEP_TO_AGENT.get(workflowStep);
         if (agentName == null) {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("未知的工作流步骤: " + workflowStep));
         }
 
-        log.info("分发到 Agent: projectId={}, step={}, agent={}", projectId, workflowStep, agentName);
+        log.info("分发到 Agent: projectId={}, step={}, agent={}, provider={}, model={}",
+                projectId, workflowStep, agentName, providerId, modelName);
 
         // 查找或创建会话
         AgentSessionPO session = findOrCreateSession(projectId, workflowStep, agentName);
@@ -104,8 +108,8 @@ public class PipelineOrchestrator {
                 throw new IllegalStateException("未找到 Agent 定义: " + agentName);
             }
 
-            // 构建 Agent
-            ReActAgent agent = agentFactory.buildAgent(projectId, agentName, definition);
+            // 构建 Agent（使用用户选择的模型）
+            ReActAgent agent = agentFactory.buildAgent(projectId, agentName, definition, providerId, modelName);
 
             // 构建用户消息
             Msg userMsg = Msg.builder()
@@ -147,14 +151,17 @@ public class PipelineOrchestrator {
      * @param projectId    项目 ID
      * @param workflowStep 工作流步骤
      * @param action       生成动作
+     * @param providerId   供应商 ID（可选）
+     * @param modelName    模型名称（可选）
      * @return 会话 ID
      */
     @Async
     @Transactional
     public CompletableFuture<String> generateAction(UUID projectId, String workflowStep,
-                                                    String action) {
+                                                    String action,
+                                                    String providerId, String modelName) {
         String prompt = buildGenerationPrompt(workflowStep, action, projectId);
-        return dispatchToAgent(projectId, workflowStep, prompt);
+        return dispatchToAgent(projectId, workflowStep, prompt, providerId, modelName);
     }
 
     // ─── 会话管理 ────────────────────────────────────────────────
@@ -233,7 +240,7 @@ public class PipelineOrchestrator {
         log.warn("executeOutlineGeneration 已废弃，请使用 dispatchToAgent");
         String prompt = String.format("请生成结构化大纲。创意输入: %s, 风格: %s, 集数: %d",
                 input, stylePreset != null ? stylePreset : "默认", targetEpisodes);
-        return dispatchToAgent(projectId, "worldview", prompt)
+        return dispatchToAgent(projectId, "worldview", prompt, null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -244,7 +251,7 @@ public class PipelineOrchestrator {
     public CompletableFuture<AgentOrchestrationResult> executeScriptRefinement(
             String sessionId, UUID projectId, String outlineContent) {
         log.warn("executeScriptRefinement 已废弃，请使用 dispatchToAgent");
-        return dispatchToAgent(projectId, "script", "请精修以下剧本:\n" + outlineContent)
+        return dispatchToAgent(projectId, "script", "请精修以下剧本:\n" + outlineContent, null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -255,7 +262,7 @@ public class PipelineOrchestrator {
     public CompletableFuture<AgentOrchestrationResult> executeFileImport(
             String sessionId, UUID projectId, String fileContent, String fileName) {
         log.warn("executeFileImport 已废弃，请使用 dispatchToAgent");
-        return dispatchToAgent(projectId, "worldview", "请导入文件: " + fileName + "\n" + fileContent)
+        return dispatchToAgent(projectId, "worldview", "请导入文件: " + fileName + "\n" + fileContent, null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -266,7 +273,7 @@ public class PipelineOrchestrator {
     public CompletableFuture<AgentOrchestrationResult> executeUrlImport(
             String sessionId, UUID projectId, String url) {
         log.warn("executeUrlImport 已废弃，请使用 dispatchToAgent");
-        return dispatchToAgent(projectId, "worldview", "请从 URL 导入: " + url)
+        return dispatchToAgent(projectId, "worldview", "请从 URL 导入: " + url, null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -278,7 +285,7 @@ public class PipelineOrchestrator {
             String sessionId, UUID projectId, String worldSetting, String synopsis) {
         log.warn("executeCharacterGeneration 已废弃，请使用 dispatchToAgent");
         return dispatchToAgent(projectId, "characters",
-                String.format("请根据世界观和梗概生成角色。\n世界观: %s\n梗概: %s", worldSetting, synopsis))
+                String.format("请根据世界观和梗概生成角色。\n世界观: %s\n梗概: %s", worldSetting, synopsis), null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -290,7 +297,7 @@ public class PipelineOrchestrator {
             String sessionId, UUID projectId, String outline, String characters) {
         log.warn("executeScriptGeneration 已废弃，请使用 dispatchToAgent");
         return dispatchToAgent(projectId, "script",
-                String.format("请根据大纲和角色生成剧本。\n大纲: %s\n角色: %s", outline, characters))
+                String.format("请根据大纲和角色生成剧本。\n大纲: %s\n角色: %s", outline, characters), null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -301,7 +308,7 @@ public class PipelineOrchestrator {
     public CompletableFuture<AgentOrchestrationResult> executeReview(
             String sessionId, UUID projectId, String scriptContent, String foreshadowInfo) {
         log.warn("executeReview 已废弃，请使用 dispatchToAgent");
-        return dispatchToAgent(projectId, "script", "请审校以下剧本:\n" + scriptContent)
+        return dispatchToAgent(projectId, "script", "请审校以下剧本:\n" + scriptContent, null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
@@ -313,7 +320,7 @@ public class PipelineOrchestrator {
             String sessionId, UUID projectId, String text, String elementType, String context) {
         log.warn("executeOptimization 已废弃，请使用 dispatchToAgent");
         return dispatchToAgent(projectId, "script",
-                String.format("请优化以下%s片段:\n%s", elementType, text))
+                String.format("请优化以下%s片段:\n%s", elementType, text), null, null)
                 .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
                 .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }

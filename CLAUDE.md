@@ -131,5 +131,5 @@ Required in `.env` (root) for Docker:
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/006-scriptmind-completion/plan.md
+at specs/009-model-provider-routing/plan.md
 <!-- SPECKIT END -->

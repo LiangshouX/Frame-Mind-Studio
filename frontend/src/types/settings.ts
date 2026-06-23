@@ -94,3 +94,18 @@ export interface DefaultModelRequest {
   provider: string
   model: string
 }
+
+/** 模型信息 */
+export interface ModelInfo {
+  model_id: string
+  display_name: string
+}
+
+/** 供应商及其可用模型 */
+export interface ProviderWithModels {
+  provider_id: string
+  provider_name: string
+  type: ProviderType
+  available: boolean
+  models: ModelInfo[]
+}

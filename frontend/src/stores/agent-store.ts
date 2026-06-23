@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CollapsibleBlock, ConnectionStatus, MessageType, WorkflowStep } from '@/types/agent'
+import type { CollapsibleBlock, ConnectionStatus, MessageType, ModelSelection, WorkflowStep } from '@/types/agent'
 
 /** UI 消息 */
 interface AgentMessageUI {
@@ -34,10 +34,16 @@ interface AgentStore {
   budgetWarning: string | null
   /** WebSocket 连接状态 */
   connectionStatus: ConnectionStatus
+  /** 每个 Tab 的模型选择 */
+  modelSelections: Partial<Record<WorkflowStep, ModelSelection>>
 
   // ─── Actions ──────────────────────────────────────────────
 
   setActiveTab: (tab: WorkflowStep) => void
+  /** 设置指定 Tab 的模型选择 */
+  setModelSelection: (tab: WorkflowStep, selection: ModelSelection) => void
+  /** 获取指定 Tab 的模型选择 */
+  getModelSelection: (tab: WorkflowStep) => ModelSelection | null
   setSession: (sessionId: string) => void
 
   /** 获取当前 Tab 的会话（自动创建） */
@@ -68,6 +74,27 @@ const createEmptyTab = (): TabSession => ({
   isStreaming: false,
 })
 
+// 从 localStorage 恢复模型选择
+function loadModelSelections(): Partial<Record<WorkflowStep, ModelSelection>> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const saved = localStorage.getItem('framemind-model-selections')
+    return saved ? JSON.parse(saved) : {}
+  } catch {
+    return {}
+  }
+}
+
+// 保存模型选择到 localStorage
+function saveModelSelections(selections: Partial<Record<WorkflowStep, ModelSelection>>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem('framemind-model-selections', JSON.stringify(selections))
+  } catch {
+    // ignore
+  }
+}
+
 const initialState = {
   activeTab: 'worldview' as WorkflowStep,
   sessions: {} as Record<string, TabSession>,
@@ -76,12 +103,25 @@ const initialState = {
   tokensConsumed: 0,
   budgetWarning: null as string | null,
   connectionStatus: 'disconnected' as ConnectionStatus,
+  modelSelections: loadModelSelections(),
 }
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
   ...initialState,
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+
+  setModelSelection: (tab, selection) => {
+    const { modelSelections } = get()
+    const updated = { ...modelSelections, [tab]: selection }
+    saveModelSelections(updated)
+    set({ modelSelections: updated })
+  },
+
+  getModelSelection: (tab) => {
+    const { modelSelections } = get()
+    return modelSelections[tab] || null
+  },
 
   setSession: (sessionId) => set({ sessionId }),
 

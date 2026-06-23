@@ -4,13 +4,12 @@ import io.agentscope.core.message.ContentBlock;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.MsgRole;
 import io.agentscope.core.message.TextBlock;
-import io.agentscope.core.model.DashScopeChatModel;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.Model;
-import io.agentscope.core.model.OpenAIChatModel;
 import io.framemind.agent.config.AgentDefinition;
 import io.framemind.core.service.ConfigFileStore;
 import io.framemind.core.service.ModelCatalogService;
+import io.framemind.core.service.ModelRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -20,8 +19,8 @@ import java.util.function.Consumer;
 
 /**
  * Real implementation of {@link AgentCallAdapter} that uses the AgentScope-Java
- * SDK to invoke LLM models. Reads provider configuration from the config file
- * store and instantiates the appropriate model class based on provider type.
+ * SDK to invoke LLM models. Uses {@link ModelRouterService} to build Model instances
+ * from user configuration.
  * <p>
  * Activated when {@code framemind.agent.adapter=agentscope} (default).
  * The {@link PlaceholderAgentCallAdapter} is used as fallback.
@@ -31,12 +30,12 @@ import java.util.function.Consumer;
 @ConditionalOnProperty(name = "framemind.agent.adapter", havingValue = "agentscope", matchIfMissing = true)
 public class AgentScopeCallAdapter implements AgentCallAdapter {
 
-    private final ModelCatalogService catalogService;
+    private final ModelRouterService modelRouterService;
     private final ConfigFileStore configStore;
     private final ConfigFileStore.DefaultModelEntry defaultModel;
 
-    public AgentScopeCallAdapter(ModelCatalogService catalogService, ConfigFileStore configStore) {
-        this.catalogService = catalogService;
+    public AgentScopeCallAdapter(ModelRouterService modelRouterService, ConfigFileStore configStore) {
+        this.modelRouterService = modelRouterService;
         this.configStore = configStore;
         this.defaultModel = configStore.getDefaultModel();
     }
@@ -50,32 +49,23 @@ public class AgentScopeCallAdapter implements AgentCallAdapter {
                 : (defaultModel != null && defaultModel.getModel() != null ? defaultModel.getModel() : null);
 
         if (providerId == null || providerId.isBlank()) {
-            log.warn("No model provider configured for agent '{}', falling back to placeholder", definition.name());
-            return callPlaceholder(definition, prompt, onChunk);
+            // Try to use the first available model
+            ModelRouterService.ModelSelection defaultSel = modelRouterService.getDefaultModelSelection();
+            if (defaultSel != null) {
+                providerId = defaultSel.providerId();
+                modelName = defaultSel.modelName();
+            } else {
+                log.warn("No model provider configured for agent '{}', falling back to placeholder", definition.name());
+                return callPlaceholder(definition, prompt, onChunk);
+            }
         }
 
-        ConfigFileStore.ProviderEntry providerConfig = configStore.getProvider(providerId);
-        if (providerConfig == null || providerConfig.getApiKey() == null || providerConfig.getApiKey().isBlank()) {
-            log.warn("Provider '{}' not configured for agent '{}', falling back to placeholder", providerId, definition.name());
-            return callPlaceholder(definition, prompt, onChunk);
-        }
-
-        ModelCatalogService.ProviderCatalogEntry catalog = catalogService.getProvider(providerId);
-        if (catalog == null) {
-            log.warn("Provider '{}' not found in catalog for agent '{}', falling back to placeholder", providerId, definition.name());
-            return callPlaceholder(definition, prompt, onChunk);
-        }
-
-        // Resolve model name
         if (modelName == null || modelName.isBlank()) {
-            List<String> models = providerConfig.getModels() != null && !providerConfig.getModels().isEmpty()
-                    ? providerConfig.getModels()
-                    : catalog.getAvailableModels();
-            modelName = models.isEmpty() ? "default" : models.get(0);
+            modelName = "default";
         }
 
         try {
-            Model model = buildModel(catalog, providerConfig, modelName);
+            Model model = modelRouterService.buildModel(providerId, modelName);
             log.info("Agent '{}' calling provider '{}' model '{}'", definition.name(), providerId, modelName);
 
             // Build messages using AgentScope Msg builder
@@ -110,37 +100,6 @@ public class AgentScopeCallAdapter implements AgentCallAdapter {
             log.error("Failed to call model for agent '{}': {}", definition.name(), e.getMessage(), e);
             return callPlaceholder(definition, prompt, onChunk);
         }
-    }
-
-    /**
-     * Builds the appropriate AgentScope Model instance based on provider type.
-     */
-    private Model buildModel(ModelCatalogService.ProviderCatalogEntry catalog,
-                              ConfigFileStore.ProviderEntry config,
-                              String modelName) {
-        String apiKey = config.getApiKey();
-        String baseUrl = config.getBaseUrl() != null ? config.getBaseUrl() : catalog.getDefaultBaseUrl();
-
-        return switch (catalog.getType()) {
-            case "DASHSCOPE" -> DashScopeChatModel.builder()
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .baseUrl(baseUrl)
-                    .stream(true)
-                    .build();
-            case "OPENAI_COMPATIBLE" -> OpenAIChatModel.builder()
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .baseUrl(baseUrl)
-                    .stream(true)
-                    .build();
-            default -> OpenAIChatModel.builder()
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .baseUrl(baseUrl)
-                    .stream(true)
-                    .build();
-        };
     }
 
     /**

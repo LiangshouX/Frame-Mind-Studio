@@ -13,7 +13,9 @@ export async function sendChatMessage(
   projectId: string,
   workflowStep: WorkflowStep,
   message: string,
-  preset?: string
+  preset?: string,
+  providerId?: string,
+  modelName?: string
 ): Promise<{ session_id: string; websocket_url: string }> {
   return apiFetch(`/projects/${projectId}/agent/chat`, {
     method: 'POST',
@@ -21,6 +23,8 @@ export async function sendChatMessage(
       workflow_step: workflowStep,
       message,
       preset,
+      provider_id: providerId,
+      model_name: modelName,
     }),
   })
 }
@@ -29,13 +33,17 @@ export async function sendChatMessage(
 export async function triggerGeneration(
   projectId: string,
   workflowStep: WorkflowStep,
-  action: string
+  action: string,
+  providerId?: string,
+  modelName?: string
 ): Promise<{ session_id: string; websocket_url: string }> {
   return apiFetch(`/projects/${projectId}/agent/generate`, {
     method: 'POST',
     body: JSON.stringify({
       workflow_step: workflowStep,
       action,
+      provider_id: providerId,
+      model_name: modelName,
     }),
   })
 }

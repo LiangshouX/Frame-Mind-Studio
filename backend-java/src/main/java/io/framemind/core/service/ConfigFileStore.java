@@ -46,7 +46,34 @@ public class ConfigFileStore {
 
     @PostConstruct
     public void init() {
+        migrateOldConfigIfNeeded();
         load();
+    }
+
+    /**
+     * 迁移旧配置文件：如果 config.json 存在但 provider_model_config.json 不存在，
+     * 将旧文件复制为新文件（保留旧文件作为备份）。
+     */
+    private void migrateOldConfigIfNeeded() {
+        Path configPath = configProperties.getConfigFilePath();
+        Path oldPath = configProperties.getOldConfigFilePath();
+
+        if (Files.exists(configPath)) {
+            // 新文件已存在，无需迁移
+            return;
+        }
+
+        if (!Files.exists(oldPath)) {
+            // 旧文件也不存在，无需迁移
+            return;
+        }
+
+        try {
+            Files.copy(oldPath, configPath);
+            log.info("Migrated old config.json to provider_model_config.json (old file preserved)");
+        } catch (IOException e) {
+            log.warn("Failed to migrate old config file: {}", e.getMessage());
+        }
     }
 
     /**

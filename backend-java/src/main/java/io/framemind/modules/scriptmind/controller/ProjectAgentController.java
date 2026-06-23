@@ -52,11 +52,13 @@ public class ProjectAgentController {
             @PathVariable UUID projectId,
             @Valid @RequestBody ChatRequest request) {
 
-        log.info("Agent chat: projectId={}, step={}, message={}",
-                projectId, request.workflowStep(), request.message().substring(0, Math.min(50, request.message().length())));
+        log.info("Agent chat: projectId={}, step={}, provider={}, model={}, message={}",
+                projectId, request.workflowStep(), request.providerId(), request.modelName(),
+                request.message().substring(0, Math.min(50, request.message().length())));
 
         String sessionId = pipelineOrchestrator
-                .dispatchToAgent(projectId, request.workflowStep(), request.message())
+                .dispatchToAgent(projectId, request.workflowStep(), request.message(),
+                        request.providerId(), request.modelName())
                 .join();
 
         return ResponseEntity.accepted().body(Map.of(
@@ -73,11 +75,13 @@ public class ProjectAgentController {
             @PathVariable UUID projectId,
             @Valid @RequestBody GenerateRequest request) {
 
-        log.info("Agent generate: projectId={}, step={}, action={}",
-                projectId, request.workflowStep(), request.action());
+        log.info("Agent generate: projectId={}, step={}, provider={}, model={}, action={}",
+                projectId, request.workflowStep(), request.providerId(), request.modelName(),
+                request.action());
 
         String sessionId = pipelineOrchestrator
-                .generateAction(projectId, request.workflowStep(), request.action())
+                .generateAction(projectId, request.workflowStep(), request.action(),
+                        request.providerId(), request.modelName())
                 .join();
 
         return ResponseEntity.accepted().body(Map.of(
@@ -177,12 +181,16 @@ public class ProjectAgentController {
     public record ChatRequest(
             String workflowStep,
             String message,
-            String preset
+            String preset,
+            String providerId,
+            String modelName
     ) {}
 
     /** 生成请求 */
     public record GenerateRequest(
             String workflowStep,
-            String action
+            String action,
+            String providerId,
+            String modelName
     ) {}
 }

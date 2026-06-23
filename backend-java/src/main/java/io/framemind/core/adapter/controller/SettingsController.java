@@ -6,6 +6,7 @@ import io.framemind.core.service.ApiKeyService;
 import io.framemind.core.service.ConfigFileStore;
 import io.framemind.core.service.ConnectivityTestService;
 import io.framemind.core.service.ModelCatalogService;
+import io.framemind.core.service.ModelRouterService;
 import io.framemind.core.service.ToolConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class SettingsController {
     private final ConnectivityTestService connectivityTestService;
     private final ToolConfigService toolConfigService;
     private final FramemindConfigProperties configProperties;
+    private final ModelRouterService modelRouterService;
 
     // --- Legacy endpoints (kept for backward compat) ---
 
@@ -258,6 +260,13 @@ public class SettingsController {
         entry.setModel(request.get("model"));
         configStore.setDefaultModel(entry);
         return ResponseEntity.ok().build();
+    }
+
+    // --- Available Models endpoint ---
+
+    @GetMapping("/available-models")
+    public ResponseEntity<List<ModelRouterService.ProviderWithModels>> getAvailableModels() {
+        return ResponseEntity.ok(modelRouterService.getAvailableModels());
     }
 
     // --- Utility ---

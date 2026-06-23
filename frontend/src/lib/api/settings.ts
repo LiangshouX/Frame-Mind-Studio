@@ -10,6 +10,7 @@ import type {
   McpServerConfigRequest,
   DefaultModel,
   DefaultModelRequest,
+  ProviderWithModels,
 } from '@/types/settings'
 
 // --- Legacy types (kept for backward compat) ---
@@ -157,4 +158,10 @@ export async function updateDefaultModel(config: DefaultModelRequest): Promise<v
     method: 'PUT',
     body: JSON.stringify(config),
   })
+}
+
+// --- Available Models API ---
+
+export async function getAvailableModels(): Promise<ProviderWithModels[]> {
+  return apiFetch('/settings/available-models')
 }
