@@ -70,15 +70,8 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
   }
 
   const handleGenerate = async () => {
-    setGenerating(true)
-    try {
-      await workflowApi.generateWorldSetting(projectId)
-      onGenerate?.()
-    } catch (error) {
-      console.error('Failed to generate world setting:', error)
-    } finally {
-      setGenerating(false)
-    }
+    // 触发 WorkflowLayout 的 onGenerate 回调，由 Agent Chat 处理生成
+    onGenerate?.()
   }
 
   const updateField = (field: keyof WorldSettingContent, value: string | string[]) => {

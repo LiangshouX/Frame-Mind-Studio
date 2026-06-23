@@ -59,15 +59,8 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
   }
 
   const handleGenerate = async () => {
-    setGenerating(true)
-    try {
-      await workflowApi.generateOutline(projectId)
-      onGenerate?.()
-    } catch (error) {
-      console.error('Failed to generate outline:', error)
-    } finally {
-      setGenerating(false)
-    }
+    // 触发 WorkflowLayout 的 onGenerate 回调，由 Agent Chat 处理生成
+    onGenerate?.()
   }
 
   const toggleExpand = (index: number) => {

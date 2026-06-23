@@ -62,6 +62,14 @@ public class AgentSessionPO {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    /** 工作流步骤：worldview/synopsis/characters/outline/script */
+    @Column(name = "workflow_step", columnDefinition = "varchar(50)")
+    private String workflowStep;
+
+    /** Agent 名称：creative_agent/synopsis_agent/character_agent/outline_agent/script_agent */
+    @Column(name = "agent_name", columnDefinition = "varchar(50)")
+    private String agentName;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

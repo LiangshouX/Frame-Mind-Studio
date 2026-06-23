@@ -20,4 +20,11 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessagePO, UU
      * @return 消息列表
      */
     List<AgentMessagePO> findBySessionIdOrderByMessageOrderAsc(UUID sessionId);
+
+    /**
+     * 根据会话 ID 删除所有消息。
+     *
+     * @param sessionId 会话 ID
+     */
+    void deleteBySessionId(UUID sessionId);
 }

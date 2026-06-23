@@ -3,9 +3,18 @@ package io.framemind.agent.orchestration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.agentscope.core.ReActAgent;
+import io.agentscope.core.agent.RuntimeContext;
+import io.agentscope.core.message.Msg;
+import io.agentscope.core.message.MsgRole;
+import io.agentscope.core.message.TextBlock;
 import io.framemind.agent.config.AgentDefinition;
+import io.framemind.agent.core.AgentEventBridge;
+import io.framemind.agent.core.AgentScopeAgentFactory;
 import io.framemind.agent.hook.BudgetHook;
 import io.framemind.agent.hook.StreamingHook;
+import io.framemind.infrastructure.po.AgentSessionPO;
+import io.framemind.infrastructure.po.ProjectPO;
 import io.framemind.infrastructure.repository.AgentSessionRepository;
 import io.framemind.infrastructure.repository.ProjectRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,22 +26,23 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Orchestrates the multi-agent screenplay pipeline.
+ * ScriptMind 工作流编排器。
  * <p>
- * The pipeline runs four stages in sequence:
- * <ol>
- *   <li><b>Showrunner</b> -- parses creative input and generates a structured outline</li>
- *   <li><b>World Builder</b> -- constructs the story bible and world setting</li>
- *   <li><b>Character Designer</b> -- designs character cards with arcs and relationships</li>
- *   <li><b>Script Doctor</b> -- reviews the combined output for quality</li>
- * </ol>
+ * 负责按 workflowStep 将用户消息分发给对应的 Agent，并通过 WebSocket 流式推送结果。
  * <p>
- * Progress is streamed to the client in real-time via {@link StreamingHook}.
- * Token consumption is tracked and enforced via {@link BudgetHook}.
+ * 每个 workflowStep 对应一个专用 Agent：
+ * <ul>
+ *   <li>worldview → creative_agent</li>
+ *   <li>synopsis → synopsis_agent</li>
+ *   <li>characters → character_agent</li>
+ *   <li>outline → outline_agent</li>
+ *   <li>script → script_agent</li>
+ * </ul>
  */
 @Slf4j
 @Service
@@ -40,576 +50,271 @@ import java.util.concurrent.CompletableFuture;
 public class PipelineOrchestrator {
 
     private final Map<String, AgentDefinition> agentDefinitions;
-    private final AgentCallAdapter agentCallAdapter;
+    private final AgentScopeAgentFactory agentFactory;
+    private final AgentEventBridge eventBridge;
     private final StreamingHook streamingHook;
     private final BudgetHook budgetHook;
     private final AgentSessionRepository sessionRepository;
     private final ProjectRepository projectRepository;
     private final ObjectMapper objectMapper;
 
-    /**
-     * Pipeline stage execution order.
-     */
-    private static final List<String> OUTLINE_PIPELINE_STAGES = List.of(
-            "showrunner", "world_builder", "character_designer", "script_doctor"
+    /** workflowStep → agentName 映射 */
+    private static final Map<String, String> STEP_TO_AGENT = Map.of(
+            "worldview", "creative_agent",
+            "synopsis", "synopsis_agent",
+            "characters", "character_agent",
+            "outline", "outline_agent",
+            "script", "script_agent"
     );
 
-    // -----------------------------------------------------------------------
-    //  Outline Generation
-    // -----------------------------------------------------------------------
-
     /**
-     * Execute the full outline generation pipeline asynchronously.
+     * 分发消息到对应 Agent 并流式推送结果。
      *
-     * @param sessionId       the agent session id (created by the API layer)
-     * @param projectId       the project this pipeline operates on
-     * @param input           the user's creative input text
-     * @param stylePreset     optional style preset (e.g. "revenge", "romance")
-     * @param targetEpisodes  the desired number of episodes
-     * @return a {@link CompletableFuture} that completes with the orchestration result
+     * @param projectId     项目 ID
+     * @param workflowStep  工作流步骤
+     * @param userMessage   用户消息
+     * @return 会话 ID
      */
     @Async
     @Transactional
-    public CompletableFuture<AgentOrchestrationResult> executeOutlineGeneration(
-            String sessionId,
-            UUID projectId,
-            String input,
-            String stylePreset,
-            int targetEpisodes) {
+    public CompletableFuture<String> dispatchToAgent(UUID projectId, String workflowStep,
+                                                     String userMessage) {
+        String agentName = STEP_TO_AGENT.get(workflowStep);
+        if (agentName == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("未知的工作流步骤: " + workflowStep));
+        }
 
-        log.info("Starting outline generation pipeline: session={}, project={}, episodes={}",
-                sessionId, projectId, targetEpisodes);
+        log.info("分发到 Agent: projectId={}, step={}, agent={}", projectId, workflowStep, agentName);
 
-        updateSessionStatus(sessionId, "running");
+        // 查找或创建会话
+        AgentSessionPO session = findOrCreateSession(projectId, workflowStep, agentName);
 
         try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
+            // 更新会话状态
+            session.setStatus("running");
+            session.setStartedAt(LocalDateTime.now());
+            sessionRepository.save(session);
 
-            // --- Stage 1: Showrunner ---
-            String showrunnerPrompt = buildShowrunnerPrompt(input, stylePreset, targetEpisodes);
-            String showrunnerOutput = executeStage(sessionId, "showrunner", showrunnerPrompt);
-            totalTokens += estimateTokens(showrunnerOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(showrunnerOutput), sessionId);
-            pipelineOutput.set("outline", parseJsonSafe(showrunnerOutput));
+            String sessionId = session.getId().toString();
 
-            // --- Stage 2: World Builder ---
-            String worldBuilderPrompt = buildWorldBuilderPrompt(showrunnerOutput);
-            String worldBuilderOutput = executeStage(sessionId, "world_builder", worldBuilderPrompt);
-            totalTokens += estimateTokens(worldBuilderOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(worldBuilderOutput), sessionId);
-            pipelineOutput.set("world_setting", parseJsonSafe(worldBuilderOutput));
+            // 获取 Agent 定义
+            AgentDefinition definition = agentDefinitions.get(agentName);
+            if (definition == null) {
+                throw new IllegalStateException("未找到 Agent 定义: " + agentName);
+            }
 
-            // --- Stage 3: Character Designer ---
-            String characterPrompt = buildCharacterDesignerPrompt(showrunnerOutput, worldBuilderOutput);
-            String characterOutput = executeStage(sessionId, "character_designer", characterPrompt);
-            totalTokens += estimateTokens(characterOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(characterOutput), sessionId);
-            pipelineOutput.set("characters", parseJsonSafe(characterOutput));
+            // 构建 Agent
+            ReActAgent agent = agentFactory.buildAgent(projectId, agentName, definition);
 
-            // --- Stage 4: Script Doctor Review ---
-            String reviewPrompt = buildScriptDoctorPrompt(showrunnerOutput, worldBuilderOutput, characterOutput);
-            String reviewOutput = executeStage(sessionId, "script_doctor", reviewPrompt);
-            totalTokens += estimateTokens(reviewOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(reviewOutput), sessionId);
-            pipelineOutput.set("quality_review", parseJsonSafe(reviewOutput));
+            // 构建用户消息
+            Msg userMsg = Msg.builder()
+                    .name("user")
+                    .role(MsgRole.USER)
+                    .content(TextBlock.builder().text(userMessage).build())
+                    .build();
 
-            // --- Complete ---
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
+            // 创建 RuntimeContext，传入 sessionId 以便状态持久化
+            RuntimeContext runtimeContext = RuntimeContext.builder()
+                    .sessionId(sessionId)
+                    .build();
 
-            log.info("Outline generation completed: session={}, tokens={}", sessionId, totalTokens);
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
+            // 调用 Agent 并桥接事件流
+            eventBridge.bridge(sessionId, agentName, agent.streamEvents(userMsg, runtimeContext), tokensConsumed -> {
+                // 完成回调
+                budgetHook.consumeTokens(projectId, tokensConsumed, sessionId);
+                session.setStatus("completed");
+                session.setCompletedAt(LocalDateTime.now());
+                session.setTokensConsumed(tokensConsumed);
+                sessionRepository.save(session);
+            });
+
+            return CompletableFuture.completedFuture(sessionId);
 
         } catch (Exception e) {
-            log.error("Outline generation failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "PIPELINE_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
+            log.error("Agent 调用失败: session={}, step={}", session.getId(), workflowStep, e);
+            streamingHook.onError(session.getId().toString(), "AGENT_ERROR", e.getMessage());
+            session.setStatus("failed");
+            session.setCompletedAt(LocalDateTime.now());
+            sessionRepository.save(session);
+            return CompletableFuture.failedFuture(e);
         }
     }
 
-    // -----------------------------------------------------------------------
-    //  Script Refinement
-    // -----------------------------------------------------------------------
+    /**
+     * 触发 "AI一键生成" 功能。
+     *
+     * @param projectId    项目 ID
+     * @param workflowStep 工作流步骤
+     * @param action       生成动作
+     * @return 会话 ID
+     */
+    @Async
+    @Transactional
+    public CompletableFuture<String> generateAction(UUID projectId, String workflowStep,
+                                                    String action) {
+        String prompt = buildGenerationPrompt(workflowStep, action, projectId);
+        return dispatchToAgent(projectId, workflowStep, prompt);
+    }
+
+    // ─── 会话管理 ────────────────────────────────────────────────
 
     /**
-     * Execute script refinement: take an outline and produce a detailed script.
+     * 查找或创建指定 workflowStep 的会话。
      */
+    private AgentSessionPO findOrCreateSession(UUID projectId, String workflowStep, String agentName) {
+        // 查找该 workflowStep 的最新会话
+        Optional<AgentSessionPO> existing = sessionRepository
+                .findByProjectIdAndWorkflowStepOrderByCreatedAtDesc(projectId, workflowStep)
+                .stream()
+                .findFirst();
+
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        // 创建新会话
+        ProjectPO project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new IllegalArgumentException("项目不存在: " + projectId));
+
+        AgentSessionPO session = new AgentSessionPO();
+        session.setProject(project);
+        session.setSessionType("chat");
+        session.setWorkflowStep(workflowStep);
+        session.setAgentName(agentName);
+        session.setStatus("pending");
+
+        ObjectNode inputData = objectMapper.createObjectNode();
+        inputData.put("workflow_step", workflowStep);
+        inputData.put("agent_name", agentName);
+        session.setInputData(inputData);
+
+        return sessionRepository.save(session);
+    }
+
+    // ─── 提示词构建 ────────────────────────────────────────────────
+
+    private String buildGenerationPrompt(String workflowStep, String action, UUID projectId) {
+        return switch (workflowStep) {
+            case "worldview" -> """
+                    请根据当前项目信息，生成一份完整的世界观设定。
+                    包含：题材类型、风格基调、时代背景、世界观设定描述、核心冲突、独特卖点、世界观规则、关键地点、主题。
+                    请以结构化方式输出。
+                    """;
+            case "synopsis" -> """
+                    请基于当前世界观设定，生成一份完整的作品梗概。
+                    包含：故事主线、核心冲突、主要转折点、结局走向、主题。
+                    """;
+            case "characters" -> """
+                    请根据世界观和梗概，设计完整的角色卡片。
+                    每个角色包含：名称、性别、角色定位、身份、人设、外貌、背景、性格、关系、弧光。
+                    至少设计 3-6 个角色。
+                    """;
+            case "outline" -> """
+                    请根据世界观、梗概和角色设定，生成一份完整的故事大纲。
+                    短剧格式：包含集数规划、每集场景、节拍设计。
+                    电影格式：包含幕结构、序列、场景。
+                    """;
+            case "script" -> """
+                    请根据大纲结构，逐集生成完整的剧本内容。
+                    每集包含：场景标题、时间地点、动作描写、对白。
+                    """;
+            default -> "请根据当前上下文进行创作。";
+        };
+    }
+
+    // ─── 旧接口兼容（保留但标记为 @Deprecated）────────────────────
+
+    @Deprecated
+    @Async
+    @Transactional
+    public CompletableFuture<AgentOrchestrationResult> executeOutlineGeneration(
+            String sessionId, UUID projectId, String input, String stylePreset, int targetEpisodes) {
+        log.warn("executeOutlineGeneration 已废弃，请使用 dispatchToAgent");
+        String prompt = String.format("请生成结构化大纲。创意输入: %s, 风格: %s, 集数: %d",
+                input, stylePreset != null ? stylePreset : "默认", targetEpisodes);
+        return dispatchToAgent(projectId, "worldview", prompt)
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
+    }
+
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeScriptRefinement(
             String sessionId, UUID projectId, String outlineContent) {
-
-        log.info("Starting script refinement: session={}, project={}", sessionId, projectId);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            // Showrunner expands the outline into full script beats
-            String expandPrompt = "请将以下大纲扩展为详细的剧本节拍（beat sheet）：\n\n" + outlineContent;
-            String expandedOutput = executeStage(sessionId, "showrunner", expandPrompt);
-            totalTokens += estimateTokens(expandedOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(expandedOutput), sessionId);
-            pipelineOutput.set("script_beats", parseJsonSafe(expandedOutput));
-
-            // Script Doctor reviews the expanded script
-            String reviewPrompt = "请审校以下剧本节拍的质量，检查节奏和逻辑：\n\n" + expandedOutput;
-            String reviewOutput = executeStage(sessionId, "script_doctor", reviewPrompt);
-            totalTokens += estimateTokens(reviewOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(reviewOutput), sessionId);
-            pipelineOutput.set("quality_review", parseJsonSafe(reviewOutput));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("Script refinement failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "REFINEMENT_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
+        log.warn("executeScriptRefinement 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "script", "请精修以下剧本:\n" + outlineContent)
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 
-    // -----------------------------------------------------------------------
-    //  File Import
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute file import: parse uploaded file content into screenplay format.
-     */
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeFileImport(
             String sessionId, UUID projectId, String fileContent, String fileName) {
-
-        log.info("Starting file import: session={}, project={}, file={}", sessionId, projectId, fileName);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            String importPrompt = "请将以下文件内容解析并转换为标准剧本格式。文件名: "
-                    + fileName + "\n\n内容:\n" + fileContent;
-            String importOutput = executeStage(sessionId, "showrunner", importPrompt);
-            totalTokens += estimateTokens(importOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(importOutput), sessionId);
-            pipelineOutput.set("imported_script", parseJsonSafe(importOutput));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("File import failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "IMPORT_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
+        log.warn("executeFileImport 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "worldview", "请导入文件: " + fileName + "\n" + fileContent)
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 
-    // -----------------------------------------------------------------------
-    //  URL Import
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute URL import: fetch content from URL and convert to screenplay format.
-     */
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeUrlImport(
             String sessionId, UUID projectId, String url) {
-
-        log.info("Starting URL import: session={}, project={}, url={}", sessionId, projectId, url);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            String importPrompt = "请从以下 URL 抓取内容并转换为标准剧本格式: " + url;
-            String importOutput = executeStage(sessionId, "showrunner", importPrompt);
-            totalTokens += estimateTokens(importOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(importOutput), sessionId);
-            pipelineOutput.set("imported_script", parseJsonSafe(importOutput));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("URL import failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "IMPORT_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
+        log.warn("executeUrlImport 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "worldview", "请从 URL 导入: " + url)
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 
-    // -----------------------------------------------------------------------
-    //  Character Generation
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute character generation: design characters based on world setting and synopsis.
-     */
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeCharacterGeneration(
             String sessionId, UUID projectId, String worldSetting, String synopsis) {
-
-        log.info("Starting character generation: session={}, project={}", sessionId, projectId);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            String prompt = String.format(
-                    "请根据以下世界观设定和故事梗概，设计完整的角色卡片。\n\n"
-                            + "## 世界观设定\n%s\n\n"
-                            + "## 故事梗概\n%s\n\n"
-                            + "请输出 JSON 数组格式的角色卡片，每个角色包含 name, role, gender, personality, "
-                            + "appearance, background, goal, arc, relationships, dialogueStyle 等字段。"
-                            + "至少设计 3-6 个角色，主角和反派必须有深度。",
-                    worldSetting != null ? worldSetting : "暂无世界观设定",
-                    synopsis != null ? synopsis : "暂无故事梗概");
-
-            String output = executeStage(sessionId, "character_designer", prompt);
-            totalTokens += estimateTokens(output);
-            budgetHook.consumeTokens(projectId, estimateTokens(output), sessionId);
-            pipelineOutput.set("characters", parseJsonSafe(output));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            log.info("Character generation completed: session={}, tokens={}", sessionId, totalTokens);
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("Character generation failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "CHARACTER_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
+        log.warn("executeCharacterGeneration 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "characters",
+                String.format("请根据世界观和梗概生成角色。\n世界观: %s\n梗概: %s", worldSetting, synopsis))
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 
-    // -----------------------------------------------------------------------
-    //  Script Generation
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute script generation: expand outline into full screenplay.
-     */
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeScriptGeneration(
             String sessionId, UUID projectId, String outline, String characters) {
-
-        log.info("Starting script generation: session={}, project={}", sessionId, projectId);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            // Showrunner expands the outline into a full script
-            String expandPrompt = String.format(
-                    "请将以下大纲扩展为完整的剧本内容。\n\n"
-                            + "## 故事大纲\n%s\n\n"
-                            + "## 角色设定\n%s\n\n"
-                            + "请输出 JSON 格式的完整剧本，遵循 ScriptContent schema：\n"
-                            + "{ \"title\": \"...\", \"episodes\": [ { \"episodeNumber\": 1, \"title\": \"...\", "
-                            + "\"scenes\": [ { \"sceneId\": \"...\", \"location\": \"...\", \"time\": \"...\", "
-                            + "\"beats\": [ { \"beatId\": \"...\", \"type\": \"action/dialogue/scene_heading\", "
-                            + "\"content\": \"...\", \"character\": \"...\", \"emotion\": \"...\" } ] } ] } ] }\n\n"
-                            + "每集至少 3-5 个场景，每个场景 3-6 个节拍，包含对白和动作描写。",
-                    outline, characters != null ? characters : "暂无角色设定");
-
-            String expandedOutput = executeStage(sessionId, "showrunner", expandPrompt);
-            totalTokens += estimateTokens(expandedOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(expandedOutput), sessionId);
-            pipelineOutput.set("script", parseJsonSafe(expandedOutput));
-
-            // Script Doctor reviews the expanded script
-            String reviewPrompt = "请快速审校以下剧本的质量，指出主要问题：\n\n" + expandedOutput;
-            String reviewOutput = executeStage(sessionId, "script_doctor", reviewPrompt);
-            totalTokens += estimateTokens(reviewOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(reviewOutput), sessionId);
-            pipelineOutput.set("quality_review", parseJsonSafe(reviewOutput));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            log.info("Script generation completed: session={}, tokens={}", sessionId, totalTokens);
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("Script generation failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "SCRIPT_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
+        log.warn("executeScriptGeneration 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "script",
+                String.format("请根据大纲和角色生成剧本。\n大纲: %s\n角色: %s", outline, characters))
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 
-    // -----------------------------------------------------------------------
-    //  Script Review
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute script review: review script content for quality issues.
-     */
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeReview(
             String sessionId, UUID projectId, String scriptContent, String foreshadowInfo) {
-
-        log.info("Starting script review: session={}, project={}", sessionId, projectId);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            String reviewPrompt = String.format(
-                    "请审校以下剧本的整体质量，提供详细的审校报告。\n\n"
-                            + "## 剧本内容\n%s\n\n"
-                            + "%s\n\n"
-                            + "请输出 JSON 格式的审校报告，包含 overall_score, strengths, issues, suggestions, "
-                            + "foreshadow_status, rhythm_analysis 等字段。"
-                            + "issues 数组中每个元素包含 severity, location, category, description, suggestion。",
-                    scriptContent,
-                    foreshadowInfo != null ? foreshadowInfo : "");
-
-            String reviewOutput = executeStage(sessionId, "script_doctor", reviewPrompt);
-            totalTokens += estimateTokens(reviewOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(reviewOutput), sessionId);
-            pipelineOutput.set("review_report", parseJsonSafe(reviewOutput));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            log.info("Script review completed: session={}, tokens={}", sessionId, totalTokens);
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("Script review failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "REVIEW_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
+        log.warn("executeReview 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "script", "请审校以下剧本:\n" + scriptContent)
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 
-    // -----------------------------------------------------------------------
-    //  Segment Optimization
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute segment optimization: improve a selected piece of dialogue or action.
-     */
+    @Deprecated
     @Async
     @Transactional
     public CompletableFuture<AgentOrchestrationResult> executeOptimization(
             String sessionId, UUID projectId, String text, String elementType, String context) {
-
-        log.info("Starting segment optimization: session={}, project={}, type={}", sessionId, projectId, elementType);
-        updateSessionStatus(sessionId, "running");
-
-        try {
-            int totalTokens = 0;
-            ObjectNode pipelineOutput = objectMapper.createObjectNode();
-
-            String optimizePrompt = String.format(
-                    "请优化以下剧本片段。元素类型: %s\n上下文: %s\n原文:\n%s\n\n"
-                            + "请提供 2-3 个优化方案，每个方案包含优化文本、风格标签和理由。",
-                    elementType, context != null ? context : "无", text);
-
-            String optimizeOutput = executeStage(sessionId, "script_doctor", optimizePrompt);
-            totalTokens += estimateTokens(optimizeOutput);
-            budgetHook.consumeTokens(projectId, estimateTokens(optimizeOutput), sessionId);
-            pipelineOutput.set("optimization_result", parseJsonSafe(optimizeOutput));
-
-            streamingHook.onComplete(sessionId, pipelineOutput, totalTokens);
-            updateSessionCompleted(sessionId, pipelineOutput, totalTokens);
-
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.success(sessionId, pipelineOutput, totalTokens));
-
-        } catch (Exception e) {
-            log.error("Segment optimization failed: session={}", sessionId, e);
-            streamingHook.onError(sessionId, "OPTIMIZATION_ERROR", e.getMessage());
-            updateSessionFailed(sessionId, e.getMessage());
-            return CompletableFuture.completedFuture(
-                    AgentOrchestrationResult.failure(sessionId, e.getMessage()));
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    //  Internal Helpers
-    // -----------------------------------------------------------------------
-
-    /**
-     * Execute a single pipeline stage: notify start, call the agent, notify completion.
-     *
-     * @return the full response text from the agent
-     */
-    private String executeStage(String sessionId, String stageName, String prompt) {
-        AgentDefinition definition = agentDefinitions.get(stageName);
-        if (definition == null) {
-            throw new IllegalStateException("Unknown agent stage: " + stageName);
-        }
-
-        streamingHook.onStageStart(sessionId, stageName, "started");
-
-        String response = agentCallAdapter.call(definition, prompt, chunk -> {
-            streamingHook.onStreamChunk(sessionId, stageName, chunk);
-        });
-
-        streamingHook.onStageStart(sessionId, stageName, "completed");
-        return response;
-    }
-
-    // -----------------------------------------------------------------------
-    //  Prompt Builders
-    // -----------------------------------------------------------------------
-
-    private String buildShowrunnerPrompt(String input, String stylePreset, int targetEpisodes) {
-        return String.format(
-                "请根据以下创意输入生成结构化故事大纲。\n\n"
-                        + "创意输入:\n%s\n\n"
-                        + "风格预设: %s\n"
-                        + "目标集数: %d\n\n"
-                        + "请输出 JSON 格式的大纲，包含 title, theme, logline, episode_list, hook_design 等字段。",
-                input,
-                stylePreset != null ? stylePreset : "默认",
-                targetEpisodes);
-    }
-
-    private String buildWorldBuilderPrompt(String outlineJson) {
-        return "请根据以下故事大纲构建完整的世界观设定：\n\n"
-                + outlineJson
-                + "\n\n请输出 JSON 格式的世界观设定，包含 setting, locations, rules, timeline 等字段。";
-    }
-
-    private String buildCharacterDesignerPrompt(String outlineJson, String worldJson) {
-        return "请根据以下故事大纲和世界观设定设计角色卡片：\n\n"
-                + "## 故事大纲\n" + outlineJson + "\n\n"
-                + "## 世界观\n" + worldJson
-                + "\n\n请输出 JSON 数组格式的角色卡片，每个角色包含 name, role, personality, "
-                + "appearance, background, goal, arc, relationships 等字段。";
-    }
-
-    private String buildScriptDoctorPrompt(String outlineJson, String worldJson, String characterJson) {
-        return "请审校以下剧本创意的整体质量：\n\n"
-                + "## 故事大纲\n" + outlineJson + "\n\n"
-                + "## 世界观\n" + worldJson + "\n\n"
-                + "## 角色\n" + characterJson
-                + "\n\n请输出 JSON 格式的审校报告，包含 overall_score, strengths, issues, suggestions, "
-                + "foreshadow_status 等字段。";
-    }
-
-    // -----------------------------------------------------------------------
-    //  Session Persistence Helpers
-    // -----------------------------------------------------------------------
-
-    private void updateSessionStatus(String sessionId, String status) {
-        try {
-            UUID id = UUID.fromString(sessionId);
-            sessionRepository.findById(id).ifPresent(session -> {
-                session.setStatus(status);
-                if ("running".equals(status)) {
-                    session.setStartedAt(LocalDateTime.now());
-                }
-                sessionRepository.save(session);
-            });
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid session id format: {}", sessionId);
-        }
-    }
-
-    private void updateSessionCompleted(String sessionId, JsonNode outputData, int tokensConsumed) {
-        try {
-            UUID id = UUID.fromString(sessionId);
-            sessionRepository.findById(id).ifPresent(session -> {
-                session.setStatus("completed");
-                session.setOutputData(outputData);
-                session.setTokensConsumed(tokensConsumed);
-                session.setCompletedAt(LocalDateTime.now());
-                sessionRepository.save(session);
-            });
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid session id format: {}", sessionId);
-        }
-    }
-
-    private void updateSessionFailed(String sessionId, String errorMessage) {
-        try {
-            UUID id = UUID.fromString(sessionId);
-            sessionRepository.findById(id).ifPresent(session -> {
-                session.setStatus("failed");
-                ObjectNode errorOutput = objectMapper.createObjectNode();
-                errorOutput.put("error", errorMessage);
-                session.setOutputData(errorOutput);
-                session.setCompletedAt(LocalDateTime.now());
-                sessionRepository.save(session);
-            });
-        } catch (IllegalArgumentException e) {
-            log.warn("Invalid session id format: {}", sessionId);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    //  Utility
-    // -----------------------------------------------------------------------
-
-    /**
-     * Estimate token count from text (rough approximation: ~1.3 tokens per Chinese character,
-     * ~0.75 tokens per English word).
-     */
-    private int estimateTokens(String text) {
-        if (text == null || text.isEmpty()) return 0;
-        // Simple heuristic: count characters and multiply
-        int chineseChars = 0;
-        int otherChars = 0;
-        for (char c : text.toCharArray()) {
-            if (Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN) {
-                chineseChars++;
-            } else {
-                otherChars++;
-            }
-        }
-        return (int) (chineseChars * 1.3 + otherChars * 0.4);
-    }
-
-    /**
-     * Parse a string as JSON, falling back to a plain-text JSON node if parsing fails.
-     */
-    private JsonNode parseJsonSafe(String text) {
-        try {
-            return objectMapper.readTree(text);
-        } catch (Exception e) {
-            // Not valid JSON -- wrap as a plain text node
-            return objectMapper.valueToTree(Map.of("text", text));
-        }
+        log.warn("executeOptimization 已废弃，请使用 dispatchToAgent");
+        return dispatchToAgent(projectId, "script",
+                String.format("请优化以下%s片段:\n%s", elementType, text))
+                .thenApply(sid -> AgentOrchestrationResult.success(sid, null, 0))
+                .exceptionally(e -> AgentOrchestrationResult.failure(sessionId, e.getMessage()));
     }
 }

@@ -1,26 +1,30 @@
 import { useEffect, useRef } from 'react'
-import { AGENT_STAGES } from '@/constants/agent-stages'
+import { CollapsibleBlock } from './collapsible-block'
+import type { CollapsibleBlock as CollapsibleBlockType } from '@/types/agent'
 
 interface MessageUI {
   id: string
   agentName: string
-  role: 'agent' | 'user' | 'system' | 'error'
+  role: 'user' | 'assistant' | 'system' | 'error'
   content: string
+  messageType?: string
   isStreaming: boolean
   timestamp: string
 }
 
 interface MessageListProps {
   messages: MessageUI[]
+  collapsibleBlocks: CollapsibleBlockType[]
+  onToggleBlock: (id: string) => void
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, collapsibleBlocks, onToggleBlock }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, collapsibleBlocks])
 
   if (messages.length === 0) {
     return (
@@ -33,33 +37,60 @@ export function MessageList({ messages }: MessageListProps) {
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
       {messages.map((msg) => {
-        const stageInfo = AGENT_STAGES[msg.agentName as keyof typeof AGENT_STAGES]
         const isError = msg.role === 'error'
+        const isUser = msg.role === 'user'
+        const isSystem = msg.role === 'system'
+
+        // 查找与该消息关联的可折叠块
+        const relatedBlocks = collapsibleBlocks.filter((b) => {
+          // 简单匹配：在消息之前添加的块
+          return false // 块独立渲染
+        })
 
         return (
-          <div key={msg.id} className={`flex gap-3 ${isError ? 'bg-[var(--error-bg)] rounded-lg p-3' : ''}`}>
+          <div key={msg.id}>
             <div
-              className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold text-white"
-              style={{ backgroundColor: isError ? 'var(--error)' : stageInfo?.color || '#666' }}
+              className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${
+                isError ? 'bg-red-500/10 rounded-lg p-3' : ''
+              }`}
             >
-              {msg.role === 'user' ? '你' : isError ? '!' : msg.agentName[0]?.toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold" style={{ color: isError ? 'var(--error)' : stageInfo?.color }}>
-                  {msg.role === 'user' ? '你' : isError ? '错误' : stageInfo?.label || msg.agentName}
-                </span>
-                {msg.isStreaming && (
-                  <span className="text-xs text-[var(--accent)] animate-pulse">输出中...</span>
+              <div
+                className={`max-w-[80%] rounded-lg px-4 py-2.5 ${
+                  isUser
+                    ? 'bg-[var(--accent)] text-white'
+                    : isError
+                      ? 'bg-red-500/20 text-red-400'
+                      : isSystem
+                        ? 'bg-[var(--bg-surface)] text-[var(--text-muted)] text-sm italic'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+                }`}
+              >
+                {!isUser && !isSystem && (
+                  <div className="text-xs font-medium mb-1 opacity-60">
+                    {msg.agentName}
+                  </div>
                 )}
-              </div>
-              <div className={`text-sm leading-relaxed whitespace-pre-wrap ${isError ? 'text-[var(--error)]' : 'text-[var(--text-secondary)]'}`}>
-                {msg.content}
+                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {msg.content}
+                </div>
+                {msg.isStreaming && (
+                  <span className="inline-block w-1.5 h-4 bg-current animate-pulse ml-0.5" />
+                )}
               </div>
             </div>
           </div>
         )
       })}
+
+      {/* 独立渲染可折叠块 */}
+      {collapsibleBlocks.map((block) => (
+        <CollapsibleBlock
+          key={block.id}
+          block={block}
+          onToggle={onToggleBlock}
+        />
+      ))}
+
       <div ref={bottomRef} />
     </div>
   )

@@ -8,8 +8,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
-
 /**
  * 流式推送 Hook，负责将 Agent 输出通过 WebSocket 实时推送给客户端。
  *
@@ -29,43 +27,79 @@ public class StreamingHook {
     private final AgentWebSocketHandler webSocketHandler;
     private final ObjectMapper objectMapper;
 
-    /** 已知阶段标识到中文标签的映射。 */
-    private static final Map<String, String> STAGE_LABELS = Map.of(
-            "showrunner", "主笔编剧",
-            "world_builder", "世界观架构师",
-            "character_designer", "角色设计师",
-            "script_doctor", "剧本医生",
-            "human_review", "人类审核"
-    );
+    // ─── 新增方法（Agent Enhancement）────────────────────────────────
 
     /**
-     * 通知客户端某个流水线阶段已开始。
-     *
-     * @param sessionId Agent 会话 ID
-     * @param stage     阶段标识（如 "showrunner"）
-     * @param status    阶段状态（如 "started"、"completed"）
+     * 推送思考块事件。
      */
-    public void onStageStart(String sessionId, String stage, String status) {
-        String stageLabel = STAGE_LABELS.getOrDefault(stage, stage);
-
+    public void onThinkingBlock(String sessionId, String blockId, String status, String content) {
         ObjectNode root = objectMapper.createObjectNode();
-        root.put("type", "stage_update");
+        root.put("type", "thinking_block");
 
         ObjectNode data = root.putObject("data");
-        data.put("stage", stage);
-        data.put("stage_label", stageLabel);
+        data.put("block_id", blockId);
         data.put("status", status);
+        data.put("content", content);
 
         send(sessionId, root);
-        log.debug("Stage update sent: session={}, stage={}, status={}", sessionId, stage, status);
     }
 
     /**
+     * 推送工具调用事件。
+     */
+    public void onToolCall(String sessionId, String blockId, String status,
+                           String toolName, String toolInput, String toolResult) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "tool_call");
+
+        ObjectNode data = root.putObject("data");
+        data.put("block_id", blockId);
+        data.put("status", status);
+        data.put("tool_name", toolName);
+        if (toolInput != null) data.put("tool_input", toolInput);
+        if (toolResult != null) data.put("tool_result", toolResult);
+
+        send(sessionId, root);
+    }
+
+    /**
+     * 推送工具执行结果事件。
+     */
+    public void onToolResult(String sessionId, String blockId, String toolName, String output) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "tool_result");
+
+        ObjectNode data = root.putObject("data");
+        data.put("block_id", blockId);
+        data.put("tool_name", toolName);
+        data.put("output", output);
+
+        send(sessionId, root);
+    }
+
+    /**
+     * 推送冲突检测事件。
+     */
+    public void onConflictDetected(String sessionId, String entityType, String entityId,
+                                   int currentVersion, int expectedVersion) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "conflict_detected");
+
+        ObjectNode data = root.putObject("data");
+        data.put("entity_type", entityType);
+        data.put("entity_id", entityId);
+        data.put("current_version", currentVersion);
+        data.put("expected_version", expectedVersion);
+        data.put("message", String.format("%s 数据已被修改（当前版本 %d，期望版本 %d），请选择保留版本",
+                entityType, currentVersion, expectedVersion));
+
+        send(sessionId, root);
+    }
+
+    // ─── 保留的原有方法 ──────────────────────────────────────────────
+
+    /**
      * 向客户端推送一段 Agent 输出流。
-     *
-     * @param sessionId Agent 会话 ID
-     * @param stage     产出该内容的阶段标识
-     * @param content   文本片段
      */
     public void onStreamChunk(String sessionId, String stage, String content) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -80,10 +114,6 @@ public class StreamingHook {
 
     /**
      * 通知客户端流水线已成功完成。
-     *
-     * @param sessionId      Agent 会话 ID
-     * @param result         最终输出数据（将序列化为 JSON）
-     * @param tokensConsumed 所有阶段消耗的总 token 数
      */
     public void onComplete(String sessionId, Object result, int tokensConsumed) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -92,7 +122,9 @@ public class StreamingHook {
         ObjectNode data = root.putObject("data");
         data.put("session_id", sessionId);
         data.put("tokens_consumed", tokensConsumed);
-        data.set("result", objectMapper.valueToTree(result));
+        if (result != null) {
+            data.set("result", objectMapper.valueToTree(result));
+        }
 
         send(sessionId, root);
         log.info("Pipeline complete: session={}, tokens={}", sessionId, tokensConsumed);
@@ -100,10 +132,6 @@ public class StreamingHook {
 
     /**
      * 通知客户端流水线遇到错误。
-     *
-     * @param sessionId Agent 会话 ID
-     * @param errorCode 机器可读的错误码（如 "RATE_LIMIT_EXCEEDED"）
-     * @param message   人类可读的错误描述
      */
     public void onError(String sessionId, String errorCode, String message) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -120,11 +148,6 @@ public class StreamingHook {
 
     /**
      * 通知客户端项目的 token 预算即将耗尽。
-     *
-     * @param sessionId  Agent 会话 ID
-     * @param tokensUsed 项目累计已使用的 token 数
-     * @param tokenLimit 项目的 token 硬上限
-     * @param threshold  警告阈值比例（如 0.80）
      */
     public void onBudgetWarning(String sessionId, long tokensUsed, long tokenLimit, double threshold) {
         ObjectNode root = objectMapper.createObjectNode();
@@ -143,18 +166,12 @@ public class StreamingHook {
 
     /**
      * 通知客户端需要进行人工审核（HITL）。
-     *
-     * @param sessionId Agent 会话 ID
-     * @param content   待审核的内容
-     * @param options   可选的审核动作
      */
     public void onHitlPrompt(String sessionId, String content, String... options) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("type", "hitl_prompt");
 
         ObjectNode data = root.putObject("data");
-        data.put("stage", "human_review");
-        data.put("stage_label", STAGE_LABELS.getOrDefault("human_review", "人类审核"));
         data.put("content", content);
 
         ArrayNode optionsArray = data.putArray("options");
@@ -164,6 +181,13 @@ public class StreamingHook {
 
         send(sessionId, root);
         log.info("HITL prompt sent: session={}", sessionId);
+    }
+
+    /**
+     * 直接发送原始 JSON 消息（用于 AgentEventBridge）。
+     */
+    public void sendRawMessage(String sessionId, String json) {
+        webSocketHandler.sendMessageToSession(sessionId, json);
     }
 
     private void send(String sessionId, ObjectNode message) {

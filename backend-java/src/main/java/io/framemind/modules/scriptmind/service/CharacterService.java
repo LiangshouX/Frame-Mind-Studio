@@ -145,6 +145,59 @@ public class CharacterService {
     }
 
     /**
+     * 按 ID 更新角色单个字段（带乐观锁）。
+     *
+     * @param characterId     角色 ID
+     * @param field           字段名
+     * @param value           新值
+     * @param expectedVersion 期望版本号
+     * @return 更新后的角色响应
+     * @throws org.springframework.orm.ObjectOptimisticLockingFailureException 版本冲突时抛出
+     */
+    @Transactional
+    public CharacterResponse updateCharacterWithVersion(UUID characterId, String field,
+                                                        String value, int expectedVersion) {
+        CharacterPO character = characterRepository.findById(characterId)
+                .orElseThrow(() -> new EntityNotFoundException("Character not found: " + characterId));
+
+        // 设置字段值
+        switch (field) {
+            case "name" -> character.setName(value);
+            case "gender" -> character.setGender(value);
+            case "role" -> character.setRole(value);
+            case "identity" -> character.setIdentity(value);
+            case "persona" -> character.setPersona(value);
+            case "description" -> character.setDescription(value);
+            case "appearance" -> character.setAppearance(value);
+            case "background" -> character.setBackground(value);
+            case "goals" -> character.setGoals(value);
+            case "dialogueStyle" -> character.setDialogueStyle(value);
+            case "arc" -> character.setArc(value);
+            case "overview" -> character.setOverview(value);
+            default -> throw new IllegalArgumentException("不支持的字段: " + field);
+        }
+
+        // 设置期望版本号，JPA @Version 会自动检查
+        character.setVersion(expectedVersion);
+        character = characterRepository.save(character);
+        log.info("Updated character {} field '{}' with version check", characterId, field);
+        return toResponse(character);
+    }
+
+    /**
+     * 按 ID 删除角色（无需 projectId）。
+     *
+     * @param characterId 角色 ID
+     */
+    @Transactional
+    public void deleteCharacter(UUID characterId) {
+        CharacterPO character = characterRepository.findById(characterId)
+                .orElseThrow(() -> new EntityNotFoundException("Character not found: " + characterId));
+        characterRepository.delete(character);
+        log.info("Deleted character {}", characterId);
+    }
+
+    /**
      * 删除角色。
      *
      * @param projectId   项目 ID

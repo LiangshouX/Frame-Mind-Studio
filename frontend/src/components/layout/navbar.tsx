@@ -4,11 +4,20 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Clapperboard, Settings, Loader2 } from 'lucide-react'
 import { useAgentStore } from '@/stores/agent-store'
-import { AGENT_STAGES } from '@/constants/agent-stages'
+
+const STEP_LABELS: Record<string, string> = {
+  worldview: '世界观',
+  synopsis: '梗概',
+  characters: '角色',
+  outline: '大纲',
+  script: '剧本',
+}
 
 export function Navbar() {
   const pathname = usePathname()
-  const { isRunning, stage, stageLabel } = useAgentStore()
+  const { sessions, activeTab } = useAgentStore()
+  const currentTab = sessions[activeTab]
+  const isRunning = currentTab?.isRunning || false
 
   return (
     <nav className="fixed top-0 left-0 right-0 h-14 bg-[var(--bg-card)] border-b border-[var(--border)] z-50 flex items-center px-6 backdrop-blur-sm">
@@ -30,11 +39,11 @@ export function Navbar() {
         </Link>
       </div>
 
-      {isRunning && stage && (
+      {isRunning && (
         <div className="flex items-center gap-2 mr-4 px-3 py-1.5 rounded-full bg-[var(--accent-subtle)] border border-[var(--accent)]/15">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
           <span className="text-sm text-[var(--accent)] font-medium">
-            {stageLabel || AGENT_STAGES[stage as keyof typeof AGENT_STAGES]?.label || stage}
+            {STEP_LABELS[activeTab] || activeTab} 生成中...
           </span>
         </div>
       )}

@@ -20,4 +20,13 @@ public interface AgentSessionRepository extends JpaRepository<AgentSessionPO, UU
      * @return 会话列表
      */
     List<AgentSessionPO> findByProjectIdOrderByCreatedAtDesc(UUID projectId);
+
+    /**
+     * 根据项目 ID 和工作流步骤查询会话列表，按创建时间降序排列。
+     *
+     * @param projectId    项目 ID
+     * @param workflowStep 工作流步骤
+     * @return 会话列表
+     */
+    List<AgentSessionPO> findByProjectIdAndWorkflowStepOrderByCreatedAtDesc(UUID projectId, String workflowStep);
 }

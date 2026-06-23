@@ -10,7 +10,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -20,51 +23,57 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * Agent 消息持久化对象，对应 agent_messages 表。
+ * 项目级 Agent 配置覆盖持久化对象，对应 agent_config_overrides 表。
+ * <p>
+ * 每个项目每个 Agent 最多一条覆盖记录，与全局配置合并后使用。
  */
 @Data
 @NoArgsConstructor
 @Entity
-@Table(name = "agent_messages")
-public class AgentMessagePO {
+@Table(
+    name = "agent_config_overrides",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"project_id", "agent_name"})
+)
+public class AgentConfigOverridePO {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_id", nullable = false)
-    private AgentSessionPO session;
+    @JoinColumn(name = "project_id", nullable = false)
+    private ProjectPO project;
 
-    @Column(name = "session_id", insertable = false, updatable = false)
-    private UUID sessionId;
+    @Column(name = "project_id", insertable = false, updatable = false)
+    private UUID projectId;
 
     @Column(name = "agent_name", nullable = false, columnDefinition = "varchar(50)")
     private String agentName;
 
-    @Column(nullable = false, columnDefinition = "varchar(20)")
-    private String role;
-
-    @Column(columnDefinition = "text")
-    private String content;
-
-    @Column(name = "message_order", nullable = false)
-    private int messageOrder;
-
-    /** 消息类型：text/tool_call/tool_result/thinking/skill */
-    @Column(name = "message_type", columnDefinition = "varchar(20) default 'text'")
-    private String messageType = "text";
-
-    /** 元数据（工具名称、思考内容等） */
+    /** 覆盖配置（systemPrompt, skills, rules, modelOverride） */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "metadata", columnDefinition = "jsonb")
-    private JsonNode metadata;
+    @Column(columnDefinition = "jsonb", nullable = false)
+    private JsonNode config;
+
+    /** 乐观锁版本号 */
+    @Version
+    @Column(nullable = false)
+    private int version = 1;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
     }
 }

@@ -65,17 +65,8 @@ export function SynopsisPanel({ projectId, onGenerate, onSkip }: SynopsisPanelPr
   }
 
   const handleGenerate = async () => {
-    setGenerating(true)
-    try {
-      await workflowApi.generateSynopsis(projectId)
-      onGenerate?.()
-      // 重新加载生成的内容
-      await loadSynopsis()
-    } catch (error) {
-      console.error('Failed to generate synopsis:', error)
-    } finally {
-      setGenerating(false)
-    }
+    // 触发 WorkflowLayout 的 onGenerate 回调，由 Agent Chat 处理生成
+    onGenerate?.()
   }
 
   const updateField = (field: keyof SynopsisContent, value: string | string[]) => {

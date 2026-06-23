@@ -48,12 +48,10 @@ export default function ScriptmindPage() {
   // Agent store (for script step's direct WebSocket management)
   const {
     setSession: setAgentSession,
-    setStage: setAgentStage,
     addMessage: addAgentMessage,
     appendStream,
     finishStreaming,
     setRunning: setAgentRunning,
-    setReviewing: setAgentReviewing,
     setTokens: setAgentTokens,
     setBudgetWarning: setAgentBudgetWarning,
     setConnectionStatus: setAgentConnectionStatus,
@@ -118,12 +116,8 @@ export default function ScriptmindPage() {
   // Script step 的 WebSocket 消息处理
   const handleScriptWsMessage = useCallback((msg: AgentWebSocketMessage) => {
     switch (msg.type) {
-      case 'stage_update':
-        setAgentStage(msg.data.stage, msg.data.stage_label)
-        if (msg.data.status === 'started') setAgentRunning(true)
-        break
       case 'stream_chunk':
-        appendStream(msg.data.content)
+        appendStream(msg.data.content, msg.data.agent_name)
         break
       case 'complete':
         finishStreaming()
@@ -134,6 +128,7 @@ export default function ScriptmindPage() {
           agentName: 'system',
           role: 'system',
           content: '✅ 生成完成',
+          messageType: 'text',
           isStreaming: false,
           timestamp: new Date().toISOString(),
         })
@@ -147,6 +142,7 @@ export default function ScriptmindPage() {
           agentName: 'system',
           role: 'error',
           content: `❌ ${msg.data.message}`,
+          messageType: 'text',
           isStreaming: false,
           timestamp: new Date().toISOString(),
         })
@@ -154,11 +150,8 @@ export default function ScriptmindPage() {
       case 'budget_warning':
         setAgentBudgetWarning(msg.data.message)
         break
-      case 'hitl_prompt':
-        setAgentReviewing(true, msg.data.content)
-        break
     }
-  }, [setAgentStage, appendStream, finishStreaming, setAgentRunning, setAgentTokens, addAgentMessage, setAgentBudgetWarning, setAgentReviewing, projectId, fetchProject])
+  }, [appendStream, finishStreaming, setAgentRunning, setAgentTokens, addAgentMessage, setAgentBudgetWarning, projectId, fetchProject])
 
   // Script step 的发送消息
   const handleScriptSend = useCallback(async (text: string) => {
@@ -167,6 +160,7 @@ export default function ScriptmindPage() {
       agentName: 'user',
       role: 'user',
       content: text,
+      messageType: 'text',
       isStreaming: false,
       timestamp: new Date().toISOString(),
     })
@@ -185,15 +179,6 @@ export default function ScriptmindPage() {
     }
   }, [projectId, addAgentMessage, setAgentSession, handleScriptWsMessage, setAgentConnectionStatus])
 
-  // Script step 的审批/修订
-  const handleScriptApprove = useCallback(async () => {
-    setAgentReviewing(false)
-  }, [setAgentReviewing])
-
-  const handleScriptRevise = useCallback(async (feedback: string) => {
-    setAgentReviewing(false)
-  }, [setAgentReviewing])
-
   // Script step AI 审查
   const handleAIReview = useCallback(async () => {
     addAgentMessage({
@@ -201,6 +186,7 @@ export default function ScriptmindPage() {
       agentName: 'user',
       role: 'user',
       content: '请审查剧本',
+      messageType: 'text',
       isStreaming: false,
       timestamp: new Date().toISOString(),
     })
@@ -407,9 +393,8 @@ export default function ScriptmindPage() {
             <div className="w-[400px] flex-shrink-0 border-l border-[var(--border-light)] flex flex-col">
               <AgentChat
                 projectId={projectId}
+                workflowStep="script"
                 onSend={handleScriptSend}
-                onApprove={handleScriptApprove}
-                onRevise={handleScriptRevise}
               />
             </div>
           </div>

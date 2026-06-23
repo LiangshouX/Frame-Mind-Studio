@@ -19,6 +19,7 @@ interface CharacterPanelProps {
   projectId: string
   characters: Character[]
   onRefresh?: () => void
+  onGenerate?: () => void
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -44,7 +45,7 @@ const GENDER_OPTIONS = [
 /**
  * 角色管理面板 —— 完整 CRUD + AI 生成 + AI 优化
  */
-export function CharacterPanel({ projectId, characters: initialCharacters, onRefresh }: CharacterPanelProps) {
+export function CharacterPanel({ projectId, characters: initialCharacters, onRefresh, onGenerate }: CharacterPanelProps) {
   const [characters, setCharacters] = useState<Character[]>(initialCharacters)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -149,21 +150,9 @@ export function CharacterPanel({ projectId, characters: initialCharacters, onRef
     }
   }
 
-  // AI 生成角色
+  // AI 生成角色 — 触发 WorkflowLayout 的 onGenerate 回调
   const handleAIGenerate = async () => {
-    setIsGenerating(true)
-    try {
-      const { generateCharacters } = await import('@/lib/api/workflow')
-      await generateCharacters(projectId)
-      // 等待一段时间后刷新（给 Agent 时间生成）
-      setTimeout(async () => {
-        await refreshCharacters()
-        setIsGenerating(false)
-      }, 3000)
-    } catch (error) {
-      console.error('AI generate failed:', error)
-      setIsGenerating(false)
-    }
+    onGenerate?.()
   }
 
   // 按角色分组

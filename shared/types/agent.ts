@@ -1,10 +1,19 @@
-export type AgentStage = 'showrunner' | 'world_builder' | 'character_designer' | 'script_doctor' | 'human_review'
-export type SessionType = 'outline_generate' | 'script_refine' | 'import_file' | 'import_url' | 'optimize_segment'
+/** 工作流步骤 */
+export type WorkflowStep = 'worldview' | 'synopsis' | 'characters' | 'outline' | 'script'
+
+/** Agent 名称 */
+export type AgentName = 'creative_agent' | 'synopsis_agent' | 'character_agent' | 'outline_agent' | 'script_agent'
+
+/** 消息类型 */
+export type MessageType = 'text' | 'tool_call' | 'tool_result' | 'thinking' | 'skill'
+
+/** 会话状态 */
 export type SessionStatus = 'pending' | 'running' | 'completed' | 'failed'
 
 export interface AgentSession {
   id: string
-  sessionType: SessionType
+  workflowStep: WorkflowStep
+  agentName: AgentName
   status: SessionStatus
   tokensConsumed: number
   startedAt?: string
@@ -12,28 +21,47 @@ export interface AgentSession {
   outputData?: unknown
 }
 
-// WebSocket message types
-export type WsMessageType = 'stage_update' | 'stream_chunk' | 'hitl_prompt' | 'complete' | 'error' | 'budget_warning'
+// WebSocket 消息类型
+export type WsMessageType =
+  | 'stream_chunk'
+  | 'thinking_block'
+  | 'tool_call'
+  | 'tool_result'
+  | 'complete'
+  | 'error'
+  | 'budget_warning'
+  | 'conflict_detected'
 
 export interface WsMessage {
   type: WsMessageType
   data: Record<string, unknown>
 }
 
-export interface StageUpdateData {
-  stage: AgentStage
-  stageLabel: string
-  status: 'started' | 'completed'
-}
-
 export interface StreamChunkData {
-  stage: AgentStage
+  agent_name: string
+  content: string
+  delta: boolean
+}
+
+export interface ThinkingBlockData {
+  agent_name: string
+  block_id: string
+  status: 'start' | 'delta' | 'end'
   content: string
 }
 
-export interface HitlPromptData {
-  stage: 'human_review'
-  stageLabel: string
-  content: string
-  options: string[]
+export interface ToolCallData {
+  agent_name: string
+  block_id: string
+  status: 'start' | 'delta' | 'end'
+  tool_name: string
+  tool_input?: Record<string, unknown>
+  tool_result?: string
+}
+
+export interface ToolResultData {
+  agent_name: string
+  block_id: string
+  tool_name: string
+  output: string
 }

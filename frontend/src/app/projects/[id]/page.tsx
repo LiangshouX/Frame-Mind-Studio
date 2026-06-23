@@ -10,7 +10,7 @@ export default function ProjectWorkbenchPage() {
   const params = useParams()
   const router = useRouter()
   const projectId = params.id as string
-  const { outlineContent, handleSend, handleApprove, handleRevise, handleRefine } = useAgentWorkbench(projectId)
+  const { outlineContent, handleSend, handleRefine } = useAgentWorkbench(projectId)
 
   const hasOutline = !!outlineContent
 
@@ -70,9 +70,8 @@ export default function ProjectWorkbenchPage() {
       <div className="w-[480px] flex-shrink-0 border-l border-[var(--border-light)]">
         <AgentChat
           projectId={projectId}
+          workflowStep="worldview"
           onSend={handleSend}
-          onApprove={handleApprove}
-          onRevise={handleRevise}
         />
       </div>
     </div>

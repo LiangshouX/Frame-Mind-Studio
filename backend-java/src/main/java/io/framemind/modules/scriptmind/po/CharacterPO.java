@@ -16,6 +16,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -96,6 +97,12 @@ public class CharacterPO {
     /** 人物概述/小传 */
     @Column(name = "overview", columnDefinition = "text")
     private String overview;
+
+    /** 乐观锁版本号 */
+    @Version
+    @Column(name = "version", nullable = false)
+    @Builder.Default
+    private Integer version = 1;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
