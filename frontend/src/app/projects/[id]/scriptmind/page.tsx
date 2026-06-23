@@ -16,6 +16,7 @@ import { OptimizePanel } from '@/components/scriptmind/script-editor/optimize'
 import { SceneNav } from '@/components/scriptmind/scene-nav'
 import { AgentChat } from '@/components/shared/agent-chat'
 import { WorkflowLayout } from '@/components/scriptmind/workflow-layout'
+import { ResizablePanel } from '@/components/shared/resizable-panel'
 import { useEditorStore } from '@/stores/editor-store'
 import { useAgentStore } from '@/stores/agent-store'
 import { connectAgentWebSocket } from '@/lib/websocket/stomp-client'
@@ -390,13 +391,19 @@ export default function ScriptmindPage() {
               {renderScriptTabContent()}
             </div>
             {/* 右侧 AI 对话面板 */}
-            <div className="w-[400px] flex-shrink-0 border-l border-[var(--border-light)] flex flex-col">
+            <ResizablePanel
+              defaultWidth={480}
+              minWidth={360}
+              storageKey="agent-chat-width"
+              side="left"
+              className="border-l border-[var(--border-light)]"
+            >
               <AgentChat
                 projectId={projectId}
                 workflowStep="script"
                 onSend={handleScriptSend}
               />
-            </div>
+            </ResizablePanel>
           </div>
         )
       default:

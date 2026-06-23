@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react'
 import { AgentChat } from '@/components/shared/agent-chat'
+import { ResizablePanel } from '@/components/shared/resizable-panel'
 import { useAgentStore } from '@/stores/agent-store'
 import { connectAgentWebSocket } from '@/lib/websocket/stomp-client'
 import { sendChatMessage, triggerGeneration, getChatHistory } from '@/lib/api/agent-api'
@@ -286,14 +287,20 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
       <div className="flex-1 overflow-y-auto scrollbar-thin">{children}</div>
 
       {/* 右侧 AI 对话面板 */}
-      <div className="w-[400px] flex-shrink-0 border-l border-[var(--border-light)]">
+      <ResizablePanel
+        defaultWidth={480}
+        minWidth={360}
+        storageKey="agent-chat-width"
+        side="left"
+        className="border-l border-[var(--border-light)]"
+      >
         <AgentChat
           projectId={projectId}
           workflowStep={step}
           onSend={handleSend}
           onGenerate={handleGenerate}
         />
-      </div>
+      </ResizablePanel>
     </div>
   )
 }

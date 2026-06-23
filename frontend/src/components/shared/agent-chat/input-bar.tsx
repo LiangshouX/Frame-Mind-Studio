@@ -31,7 +31,7 @@ export function InputBar({ onSend, disabled, placeholder = '输入你的创意�
             }
           }}
           placeholder={placeholder}
-          rows={2}
+          rows={3}
           disabled={disabled}
           className="flex-1 input resize-none disabled:opacity-50 text-sm"
         />

@@ -28,7 +28,7 @@ export default function NewProjectPage() {
     if (!title.trim() || genre.length === 0) return
     try {
       const project = await createProject({ title: title.trim(), genre, format, description: description.trim() || undefined })
-      router.push(`/projects/${project.id}`)
+      router.push(`/projects/${project.id}/scriptmind`)
     } catch {}
   }
 

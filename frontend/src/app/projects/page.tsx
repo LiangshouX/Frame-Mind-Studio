@@ -59,7 +59,7 @@ export default function ProjectsPage() {
               <div
                 key={project.id}
                 className="group relative p-6 card cursor-pointer"
-                onClick={() => router.push(`/projects/${project.id}`)}
+                onClick={() => router.push(`/projects/${project.id}/scriptmind`)}
               >
                 <div className="flex items-start justify-between mb-4">
                   <h3 className="font-display text-lg font-bold truncate flex-1 text-[var(--text-primary)]">{project.title}</h3>
