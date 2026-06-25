@@ -1,9 +1,10 @@
-package io.framemind.agent.tool;
+package io.framemind.modules.scriptmind.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
+import io.framemind.agent.registry.AgentToolHelper;
 import io.framemind.modules.scriptmind.service.OutlineService;
 import io.framemind.modules.scriptmind.service.ScriptService;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +42,7 @@ public class ScriptTool {
             return result.toString();
         } catch (Exception e) {
             log.error("保存场景内容失败: projectId={}, ep={}", projectId, episodeNumber, e);
-            return errorJson("保存场景内容失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("保存场景内容失败: " + e.getMessage());
         }
     }
 
@@ -78,12 +79,5 @@ public class ScriptTool {
             log.error("检查一致性失败: projectId={}", projectId, e);
             return "检查一致性失败: " + e.getMessage();
         }
-    }
-
-    private String errorJson(String message) {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("status", "error");
-        node.put("message", message);
-        return node.toString();
     }
 }

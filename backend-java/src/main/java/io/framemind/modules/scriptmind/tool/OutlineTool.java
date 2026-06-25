@@ -1,9 +1,10 @@
-package io.framemind.agent.tool;
+package io.framemind.modules.scriptmind.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
+import io.framemind.agent.registry.AgentToolHelper;
 import io.framemind.modules.scriptmind.service.CharacterService;
 import io.framemind.modules.scriptmind.service.OutlineService;
 import io.framemind.modules.scriptmind.service.SynopsisService;
@@ -44,7 +45,7 @@ public class OutlineTool {
             return result.toString();
         } catch (Exception e) {
             log.error("保存大纲失败: projectId={}", projectId, e);
-            return errorJson("保存大纲失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("保存大纲失败: " + e.getMessage());
         }
     }
 
@@ -80,12 +81,5 @@ public class OutlineTool {
             log.error("加载角色上下文失败: projectId={}", projectId, e);
             return "加载角色失败: " + e.getMessage();
         }
-    }
-
-    private String errorJson(String message) {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("status", "error");
-        node.put("message", message);
-        return node.toString();
     }
 }

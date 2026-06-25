@@ -4,21 +4,22 @@ import io.agentscope.core.ReActAgent;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.tool.Toolkit;
 import io.framemind.agent.config.AgentDefinition;
-import io.framemind.agent.tool.CharacterTool;
-import io.framemind.agent.tool.OutlineTool;
-import io.framemind.agent.tool.ScriptTool;
-import io.framemind.agent.tool.SynopsisTool;
-import io.framemind.agent.tool.WebSearchTool;
+import io.framemind.agent.registry.AgentToolRegistry;
 import io.framemind.core.service.AgentConfigService;
 import io.framemind.core.service.ModelRouterService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * AgentScope Agent 工厂，负责构建 {@link ReActAgent} 实例。
  * <p>
  * 根据 Agent 配置（全局 + 项目覆盖）构建带有正确工具、系统提示和模型的 Agent。
  * 使用 {@link ModelRouterService} 构建 Model 实例，直接传递给 ReActAgent。
+ * <p>
+ * Tool 注册通过 {@link AgentToolRegistry} 接口实现模块化——各业务模块自行注册 Tool，
+ * 本工厂不再硬编码 agent → tool 映射。
  */
 @Slf4j
 @Component
@@ -27,28 +28,16 @@ public class AgentScopeAgentFactory {
     private final AgentConfigService agentConfigService;
     private final JpaAgentStateStore stateStore;
     private final ModelRouterService modelRouterService;
-    private final WebSearchTool webSearchTool;
-    private final CharacterTool characterTool;
-    private final SynopsisTool synopsisTool;
-    private final OutlineTool outlineTool;
-    private final ScriptTool scriptTool;
+    private final List<AgentToolRegistry> toolRegistries;
 
     public AgentScopeAgentFactory(AgentConfigService agentConfigService,
                                   JpaAgentStateStore stateStore,
                                   ModelRouterService modelRouterService,
-                                  WebSearchTool webSearchTool,
-                                  CharacterTool characterTool,
-                                  SynopsisTool synopsisTool,
-                                  OutlineTool outlineTool,
-                                  ScriptTool scriptTool) {
+                                  List<AgentToolRegistry> toolRegistries) {
         this.agentConfigService = agentConfigService;
         this.stateStore = stateStore;
         this.modelRouterService = modelRouterService;
-        this.webSearchTool = webSearchTool;
-        this.characterTool = characterTool;
-        this.synopsisTool = synopsisTool;
-        this.outlineTool = outlineTool;
-        this.scriptTool = scriptTool;
+        this.toolRegistries = toolRegistries;
     }
 
     /**
@@ -70,7 +59,7 @@ public class AgentScopeAgentFactory {
         // 加载合并后的配置（全局 + 项目覆盖）
         AgentConfigService.MergedAgentConfig config = agentConfigService.loadConfig(projectId, agentName);
 
-        // 构建 Toolkit，注册该 Agent 需要的工具
+        // 构建 Toolkit，从注册中心获取该 Agent 需要的工具
         Toolkit toolkit = buildToolkit(agentName);
 
         // 获取系统提示（优先使用项目覆盖）
@@ -161,35 +150,22 @@ public class AgentScopeAgentFactory {
     }
 
     /**
-     * 根据 Agent 名称构建对应的 Toolkit，注册相应的工具。
+     * 从注册中心获取指定 Agent 的 Tool 列表并构建 Toolkit。
      */
     private Toolkit buildToolkit(String agentName) {
         Toolkit toolkit = new Toolkit();
+        int toolCount = 0;
 
-        switch (agentName) {
-            case "creative_agent" -> {
-                toolkit.registerTool(webSearchTool);
+        for (AgentToolRegistry registry : toolRegistries) {
+            List<Object> tools = registry.getToolsForAgent(agentName);
+            for (Object tool : tools) {
+                toolkit.registerTool(tool);
+                toolCount++;
             }
-            case "synopsis_agent" -> {
-                toolkit.registerTool(synopsisTool);
-            }
-            case "character_agent" -> {
-                toolkit.registerTool(characterTool);
-            }
-            case "outline_agent" -> {
-                toolkit.registerTool(outlineTool);
-            }
-            case "script_agent" -> {
-                toolkit.registerTool(scriptTool);
-            }
-            default -> {
-                log.warn("未知 Agent 名称，注册所有工具: {}", agentName);
-                toolkit.registerTool(webSearchTool);
-                toolkit.registerTool(characterTool);
-                toolkit.registerTool(synopsisTool);
-                toolkit.registerTool(outlineTool);
-                toolkit.registerTool(scriptTool);
-            }
+        }
+
+        if (toolCount == 0) {
+            log.warn("Agent '{}' 没有注册任何 Tool，将以纯对话模式运行", agentName);
         }
 
         return toolkit;

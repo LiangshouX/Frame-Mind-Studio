@@ -60,13 +60,11 @@ public class AgentController {
         if (request.targetEpisodes() != null) inputData.put("targetEpisodes", request.targetEpisodes());
         AgentSessionPO session = agentSessionService.createSession(project, "outline_generate", inputData);
 
-        pipelineOrchestrator.executeOutlineGeneration(
-                session.getId().toString(),
-                request.projectId(),
+        String prompt = String.format("请生成结构化大纲。创意输入: %s, 风格: %s, 集数: %d",
                 request.inputContent(),
-                request.stylePreset(),
-                request.targetEpisodes() != null ? request.targetEpisodes() : 3
-        );
+                request.stylePreset() != null ? request.stylePreset() : "默认",
+                request.targetEpisodes() != null ? request.targetEpisodes() : 3);
+        pipelineOrchestrator.dispatchToAgent(request.projectId(), "worldview", prompt, null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -90,11 +88,8 @@ public class AgentController {
                 .put("inputContent", request.inputContent());
         AgentSessionPO session = agentSessionService.createSession(project, "script_refine", inputData);
 
-        pipelineOrchestrator.executeScriptRefinement(
-                session.getId().toString(),
-                request.projectId(),
-                request.inputContent()
-        );
+        pipelineOrchestrator.dispatchToAgent(request.projectId(), "script",
+                "请精修以下剧本:\n" + request.inputContent(), null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -132,12 +127,8 @@ public class AgentController {
                 .put("size", file.getSize());
         AgentSessionPO session = agentSessionService.createSession(project, "import_file", inputData);
 
-        pipelineOrchestrator.executeFileImport(
-                session.getId().toString(),
-                projectId,
-                fileContent,
-                file.getOriginalFilename()
-        );
+        pipelineOrchestrator.dispatchToAgent(projectId, "worldview",
+                "请导入文件: " + file.getOriginalFilename() + "\n" + fileContent, null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -160,11 +151,8 @@ public class AgentController {
                 .put("url", request.url());
         AgentSessionPO session = agentSessionService.createSession(project, "import_url", inputData);
 
-        pipelineOrchestrator.executeUrlImport(
-                session.getId().toString(),
-                request.projectId(),
-                request.url()
-        );
+        pipelineOrchestrator.dispatchToAgent(request.projectId(), "worldview",
+                "请从 URL 导入: " + request.url(), null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -190,13 +178,11 @@ public class AgentController {
         if (request.context() != null) inputData.put("context", request.context());
         AgentSessionPO session = agentSessionService.createSession(project, "optimize_segment", inputData);
 
-        pipelineOrchestrator.executeOptimization(
-                session.getId().toString(),
-                request.projectId(),
-                request.text(),
-                request.elementType() != null ? request.elementType() : "dialogue",
-                request.context()
-        );
+        pipelineOrchestrator.dispatchToAgent(request.projectId(), "script",
+                String.format("请优化以下%s片段:\n%s",
+                        request.elementType() != null ? request.elementType() : "dialogue",
+                        request.text()),
+                null, null);
 
         return ResponseEntity.accepted().body(new OptimizeSegmentResponse(
                 java.util.List.of(new OptimizeSegmentResponse.Alternative(

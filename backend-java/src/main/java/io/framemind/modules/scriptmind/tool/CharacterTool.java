@@ -1,9 +1,10 @@
-package io.framemind.agent.tool;
+package io.framemind.modules.scriptmind.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolParam;
+import io.framemind.agent.registry.AgentToolHelper;
 import io.framemind.modules.scriptmind.dto.CharacterCreateRequest;
 import io.framemind.modules.scriptmind.service.CharacterService;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +50,7 @@ public class CharacterTool {
             return objectMapper.writeValueAsString(response);
         } catch (Exception e) {
             log.error("创建角色失败: name={}", name, e);
-            return errorJson("创建角色失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("创建角色失败: " + e.getMessage());
         }
     }
 
@@ -73,7 +74,7 @@ public class CharacterTool {
             return conflict.toString();
         } catch (Exception e) {
             log.error("更新角色失败: characterId={}", characterId, e);
-            return errorJson("更新角色失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("更新角色失败: " + e.getMessage());
         }
     }
 
@@ -88,7 +89,7 @@ public class CharacterTool {
             return result.toString();
         } catch (Exception e) {
             log.error("删除角色失败: characterId={}", characterId, e);
-            return errorJson("删除角色失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("删除角色失败: " + e.getMessage());
         }
     }
 
@@ -137,7 +138,7 @@ public class CharacterTool {
             return result.toString();
         } catch (Exception e) {
             log.error("批量创建角色失败", e);
-            return errorJson("批量创建角色失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("批量创建角色失败: " + e.getMessage());
         }
     }
 
@@ -161,7 +162,7 @@ public class CharacterTool {
             return result.toString();
         } catch (Exception e) {
             log.error("批量删除角色失败", e);
-            return errorJson("批量删除角色失败: " + e.getMessage());
+            return AgentToolHelper.errorJson("批量删除角色失败: " + e.getMessage());
         }
     }
 
@@ -172,12 +173,5 @@ public class CharacterTool {
         } catch (Exception e) {
             return objectMapper.createArrayNode();
         }
-    }
-
-    private String errorJson(String message) {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("status", "error");
-        node.put("message", message);
-        return node.toString();
     }
 }
