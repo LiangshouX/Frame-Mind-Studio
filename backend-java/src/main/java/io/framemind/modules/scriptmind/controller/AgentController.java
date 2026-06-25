@@ -64,7 +64,7 @@ public class AgentController {
                 request.inputContent(),
                 request.stylePreset() != null ? request.stylePreset() : "默认",
                 request.targetEpisodes() != null ? request.targetEpisodes() : 3);
-        pipelineOrchestrator.dispatchToAgent(request.projectId(), "worldview", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(request.projectId(), "worldview", prompt, null, null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -89,7 +89,7 @@ public class AgentController {
         AgentSessionPO session = agentSessionService.createSession(project, "script_refine", inputData);
 
         pipelineOrchestrator.dispatchToAgent(request.projectId(), "script",
-                "请精修以下剧本:\n" + request.inputContent(), null, null);
+                "请精修以下剧本:\n" + request.inputContent(), null, null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -128,7 +128,7 @@ public class AgentController {
         AgentSessionPO session = agentSessionService.createSession(project, "import_file", inputData);
 
         pipelineOrchestrator.dispatchToAgent(projectId, "worldview",
-                "请导入文件: " + file.getOriginalFilename() + "\n" + fileContent, null, null);
+                "请导入文件: " + file.getOriginalFilename() + "\n" + fileContent, null, null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -152,7 +152,7 @@ public class AgentController {
         AgentSessionPO session = agentSessionService.createSession(project, "import_url", inputData);
 
         pipelineOrchestrator.dispatchToAgent(request.projectId(), "worldview",
-                "请从 URL 导入: " + request.url(), null, null);
+                "请从 URL 导入: " + request.url(), null, null, null);
 
         return ResponseEntity.accepted().body(Map.of(
                 "session_id", session.getId().toString(),
@@ -182,7 +182,7 @@ public class AgentController {
                 String.format("请优化以下%s片段:\n%s",
                         request.elementType() != null ? request.elementType() : "dialogue",
                         request.text()),
-                null, null);
+                null, null, null);
 
         return ResponseEntity.accepted().body(new OptimizeSegmentResponse(
                 java.util.List.of(new OptimizeSegmentResponse.Alternative(

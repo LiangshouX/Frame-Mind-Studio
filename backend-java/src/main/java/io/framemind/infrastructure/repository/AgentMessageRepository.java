@@ -27,4 +27,12 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessagePO, UU
      * @param sessionId 会话 ID
      */
     void deleteBySessionId(UUID sessionId);
+
+    /**
+     * 统计指定会话的消息数量。
+     *
+     * @param sessionId 会话 ID
+     * @return 消息数量
+     */
+    long countBySessionId(UUID sessionId);
 }

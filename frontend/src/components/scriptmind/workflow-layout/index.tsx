@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { AgentChat } from '@/components/shared/agent-chat'
 import { ResizablePanel } from '@/components/shared/resizable-panel'
+import { ChatHistorySidebar } from '@/components/scriptmind/chat-history-sidebar'
 import { useAgentStore } from '@/stores/agent-store'
 import { connectAgentWebSocket } from '@/lib/websocket/stomp-client'
 import { sendChatMessage, triggerGeneration, getChatHistory } from '@/lib/api/agent-api'
@@ -16,9 +17,13 @@ interface WorkflowLayoutProps {
   onGenerate?: () => void
 }
 
+/** 右侧面板 Tab 类型 */
+type RightPanelTab = 'chat' | 'history'
+
 /**
  * 统一的工作流布局组件。
  * 左侧为内容面板（60%），右侧为 AI 对话面板（40%）。
+ * 右侧面板支持 Tab 切换：对话 / 历史。
  * 自动管理 WebSocket 连接和消息处理。
  */
 export function WorkflowLayout({ projectId, step, children, onGenerate }: WorkflowLayoutProps) {
@@ -36,43 +41,19 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
     updateCollapsibleBlock,
     sessions,
     getModelSelection,
+    loadSessionList,
+    createNewSession,
   } = useAgentStore()
 
   const wsRef = useRef<ReturnType<typeof connectAgentWebSocket> | null>(null)
+  const [rightTab, setRightTab] = useState<RightPanelTab>('chat')
 
   // 设置当前活跃 Tab
   useEffect(() => {
     setActiveTab(step)
-  }, [step, setActiveTab])
-
-  // 加载聊天历史
-  useEffect(() => {
-    const loadHistory = async () => {
-      try {
-        const history = await getChatHistory(projectId, step)
-        if (history && history.messages) {
-          // 将历史消息添加到 store
-          for (const msg of history.messages) {
-            addMessage({
-              id: msg.id,
-              agentName: msg.role === 'user' ? 'user' : history.agent_name || 'assistant',
-              role: msg.role === 'user' ? 'user' : msg.role === 'system' ? 'system' : 'assistant',
-              content: msg.content,
-              messageType: msg.message_type || 'text',
-              isStreaming: false,
-              timestamp: msg.created_at,
-            })
-          }
-          if (history.id) {
-            setSession(history.id)
-          }
-        }
-      } catch {
-        // 静默失败，首次使用时没有历史
-      }
-    }
-    loadHistory()
-  }, [projectId, step]) // eslint-disable-line react-hooks/exhaustive-deps
+    // 加载会话列表
+    loadSessionList(projectId, step)
+  }, [step, setActiveTab, projectId, loadSessionList])
 
   // WebSocket 消息处理
   const handleMessage = useCallback(
@@ -204,12 +185,28 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
       setRunning(true)
 
       try {
+        const currentSessionId = sessions[step]?.sessionId || undefined
         const modelSel = getModelSelection(step)
         const result = await sendChatMessage(
           projectId, step, text, undefined,
-          modelSel?.providerId, modelSel?.modelName
+          modelSel?.providerId, modelSel?.modelName,
+          currentSessionId
         )
         setSession(result.session_id)
+
+        // 更新 store 中的 sessionId
+        useAgentStore.setState((state) => {
+          const tab = state.sessions[step]
+          if (tab) {
+            return {
+              sessions: {
+                ...state.sessions,
+                [step]: { ...tab, sessionId: result.session_id },
+              },
+            }
+          }
+          return {}
+        })
 
         // 断开旧连接
         if (wsRef.current) {
@@ -235,7 +232,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         })
       }
     },
-    [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection]
+    [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection, sessions]
   )
 
   // AI 一键生成
@@ -281,12 +278,18 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
     }
   }, [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection])
 
+  // 新建对话
+  const handleNewChat = useCallback(async () => {
+    await createNewSession(projectId, step)
+    setRightTab('chat')
+  }, [projectId, step, createNewSession])
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* 左侧内容区域 */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">{children}</div>
 
-      {/* 右侧 AI 对话面板 */}
+      {/* 右侧 AI 面板 */}
       <ResizablePanel
         defaultWidth={480}
         minWidth={360}
@@ -294,12 +297,49 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         side="left"
         className="border-l border-[var(--border-light)]"
       >
-        <AgentChat
-          projectId={projectId}
-          workflowStep={step}
-          onSend={handleSend}
-          onGenerate={handleGenerate}
-        />
+        <div className="flex flex-col h-full">
+          {/* Tab 切换栏 */}
+          <div className="flex border-b border-[var(--border-light)]">
+            <button
+              onClick={() => setRightTab('chat')}
+              className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                rightTab === 'chat'
+                  ? 'text-[var(--text-accent)] border-b-2 border-[var(--border-accent)]'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              对话
+            </button>
+            <button
+              onClick={() => setRightTab('history')}
+              className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+                rightTab === 'history'
+                  ? 'text-[var(--text-accent)] border-b-2 border-[var(--border-accent)]'
+                  : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              历史
+            </button>
+          </div>
+
+          {/* Tab 内容 */}
+          <div className="flex-1 overflow-hidden">
+            {rightTab === 'chat' ? (
+              <AgentChat
+                projectId={projectId}
+                workflowStep={step}
+                onSend={handleSend}
+                onGenerate={handleGenerate}
+              />
+            ) : (
+              <ChatHistorySidebar
+                projectId={projectId}
+                workflowStep={step}
+                onNewChat={handleNewChat}
+              />
+            )}
+          </div>
+        </div>
       </ResizablePanel>
     </div>
   )

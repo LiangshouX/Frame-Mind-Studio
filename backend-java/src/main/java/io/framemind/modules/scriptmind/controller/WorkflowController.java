@@ -62,7 +62,7 @@ public class WorkflowController {
                 ? "请基于以下梗概生成世界观设定:\n" + synopsisContext
                 : "请根据当前项目信息，生成一份完整的世界观设定。";
 
-        pipelineOrchestrator.dispatchToAgent(projectId, "worldview", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(projectId, "worldview", prompt, null, null, null);
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId,
@@ -92,7 +92,7 @@ public class WorkflowController {
                 ? "请基于以下世界观设定生成梗概:\n" + worldSettingContext
                 : "请基于当前世界观设定，生成一份完整的作品梗概。";
 
-        pipelineOrchestrator.dispatchToAgent(projectId, "synopsis", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(projectId, "synopsis", prompt, null, null, null);
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId,
@@ -126,7 +126,7 @@ public class WorkflowController {
                 ? "请根据以下世界观和梗概生成角色:\n" + context
                 : "请根据世界观和梗概，设计完整的角色卡片。";
 
-        pipelineOrchestrator.dispatchToAgent(projectId, "characters", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(projectId, "characters", prompt, null, null, null);
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId,
@@ -164,7 +164,7 @@ public class WorkflowController {
                 ? "请根据以下信息生成故事大纲:\n" + context
                 : "请根据世界观、梗概和角色设定，生成一份完整的故事大纲。";
 
-        pipelineOrchestrator.dispatchToAgent(projectId, "outline", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(projectId, "outline", prompt, null, null, null);
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId,
@@ -198,7 +198,7 @@ public class WorkflowController {
                 ? "请根据以下大纲和角色生成剧本:\n" + context
                 : "请根据大纲结构，逐集生成完整的剧本内容。";
 
-        pipelineOrchestrator.dispatchToAgent(projectId, "script", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(projectId, "script", prompt, null, null, null);
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId,
@@ -240,7 +240,7 @@ public class WorkflowController {
                 ? "请审校以下剧本:\n" + context
                 : "请审校当前项目的剧本内容。";
 
-        pipelineOrchestrator.dispatchToAgent(projectId, "script", prompt, null, null);
+        pipelineOrchestrator.dispatchToAgent(projectId, "script", prompt, null, null, null);
 
         return ResponseEntity.ok(Map.of(
                 "session_id", sessionId,

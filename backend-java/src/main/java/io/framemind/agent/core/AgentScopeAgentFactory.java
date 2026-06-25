@@ -3,6 +3,7 @@ package io.framemind.agent.core;
 import io.agentscope.core.ReActAgent;
 import io.agentscope.core.model.Model;
 import io.agentscope.core.tool.Toolkit;
+import io.agentscope.core.tracing.OtelTracingMiddleware;
 import io.framemind.agent.config.AgentDefinition;
 import io.framemind.agent.registry.AgentToolRegistry;
 import io.framemind.core.service.AgentConfigService;
@@ -77,6 +78,7 @@ public class AgentScopeAgentFactory {
                 .maxIters(definition.maxIterations())
                 .stateStore(stateStore)
                 .model(model)
+                .middleware(new OtelTracingMiddleware())
                 .build();
 
         log.info("Agent 构建完成: {}", agentName);

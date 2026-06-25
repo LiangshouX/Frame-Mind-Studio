@@ -15,6 +15,8 @@ export interface AgentSession {
   workflowStep: WorkflowStep
   agentName: AgentName
   status: SessionStatus
+  title?: string
+  messageCount?: number
   tokensConsumed: number
   startedAt?: string
   completedAt?: string

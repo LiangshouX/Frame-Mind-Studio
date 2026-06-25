@@ -70,6 +70,10 @@ public class AgentSessionPO {
     @Column(name = "agent_name", columnDefinition = "varchar(50)")
     private String agentName;
 
+    /** 会话标题（自动生成或用户编辑） */
+    @Column(name = "title", columnDefinition = "varchar(200)")
+    private String title;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

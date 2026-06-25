@@ -131,5 +131,5 @@ Required in `.env` (root) for Docker:
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/010-agent-module-refactor/plan.md
+at specs/012-scriptmind-chat-history-storage/plan.md
 <!-- SPECKIT END -->

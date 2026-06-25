@@ -1,0 +1,43 @@
+// Grafana Alloy 配置
+// 接收 OTLP 数据（来自 OTel Java Agent），分发到 Tempo 和 Prometheus
+
+// ─── 接收器：OTLP gRPC + HTTP ───
+otelcol.receiver.otlp "default" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    traces  = [otelcol.processor.batch.default.input]
+    metrics = [otelcol.processor.batch.default.input]
+  }
+}
+
+// ─── 处理器：批处理 ───
+otelcol.processor.batch "default" {
+  output {
+    traces  = [otelcol.exporter.otlp.tempo.input]
+    metrics = [otelcol.exporter.prometheus.default.input]
+  }
+}
+
+// ─── 导出器：Traces → Tempo ───
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+  }
+}
+
+// ─── 导出器：Metrics → Prometheus (remote_write) ───
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}

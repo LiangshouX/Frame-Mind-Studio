@@ -47,6 +47,8 @@ export interface AgentSession {
   workflow_step: WorkflowStep
   agent_name: AgentName
   status: 'pending' | 'running' | 'completed' | 'failed'
+  title: string | null
+  message_count: number
   messages: AgentMessageResponse[]
   created_at: string
   updated_at: string

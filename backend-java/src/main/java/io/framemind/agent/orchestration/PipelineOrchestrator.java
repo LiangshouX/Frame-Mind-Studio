@@ -17,6 +17,7 @@ import io.framemind.infrastructure.po.AgentSessionPO;
 import io.framemind.infrastructure.po.ProjectPO;
 import io.framemind.infrastructure.repository.AgentSessionRepository;
 import io.framemind.infrastructure.repository.ProjectRepository;
+import io.framemind.modules.scriptmind.service.AgentSessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -50,6 +51,7 @@ public class PipelineOrchestrator {
     private final BudgetHook budgetHook;
     private final AgentSessionRepository sessionRepository;
     private final ProjectRepository projectRepository;
+    private final AgentSessionService agentSessionService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -60,13 +62,15 @@ public class PipelineOrchestrator {
      * @param userMessage   用户消息
      * @param providerId    供应商 ID（可选，为 null 时使用默认）
      * @param modelName     模型名称（可选，为 null 时使用默认）
+     * @param sessionId     会话 ID（可选，为 null 时创建新会话）
      * @return 会话 ID
      */
     @Async
     @Transactional
     public CompletableFuture<String> dispatchToAgent(UUID projectId, String workflowStep,
                                                      String userMessage,
-                                                     String providerId, String modelName) {
+                                                     String providerId, String modelName,
+                                                     String sessionId) {
         WorkflowStepDefinition stepDef = workflowStepDefinitions.get(workflowStep);
         if (stepDef == null) {
             return CompletableFuture.failedFuture(
@@ -74,11 +78,17 @@ public class PipelineOrchestrator {
         }
         String agentName = stepDef.agentName();
 
-        log.info("分发到 Agent: projectId={}, step={}, agent={}, provider={}, model={}",
-                projectId, workflowStep, agentName, providerId, modelName);
+        log.info("分发到 Agent: projectId={}, step={}, agent={}, provider={}, model={}, sessionId={}",
+                projectId, workflowStep, agentName, providerId, modelName, sessionId);
 
-        // 查找或创建会话
-        AgentSessionPO session = findOrCreateSession(projectId, workflowStep, agentName);
+        // 查找指定会话或创建新会话
+        AgentSessionPO session;
+        if (sessionId != null && !sessionId.isBlank()) {
+            session = sessionRepository.findById(UUID.fromString(sessionId))
+                    .orElseThrow(() -> new IllegalArgumentException("会话不存在: " + sessionId));
+        } else {
+            session = createSession(projectId, workflowStep, agentName);
+        }
 
         try {
             // 更新会话状态
@@ -117,6 +127,13 @@ public class PipelineOrchestrator {
                 session.setCompletedAt(LocalDateTime.now());
                 session.setTokensConsumed(tokensConsumed);
                 sessionRepository.save(session);
+
+                // 自动生成会话标题
+                try {
+                    agentSessionService.generateTitle(UUID.fromString(sessionId));
+                } catch (Exception e) {
+                    log.warn("自动生成标题失败: sessionId={}", sessionId, e);
+                }
             });
 
             return CompletableFuture.completedFuture(sessionId);
@@ -151,26 +168,15 @@ public class PipelineOrchestrator {
             return CompletableFuture.failedFuture(
                     new IllegalArgumentException("未知的工作流步骤: " + workflowStep));
         }
-        return dispatchToAgent(projectId, workflowStep, stepDef.promptTemplate(), providerId, modelName);
+        return dispatchToAgent(projectId, workflowStep, stepDef.promptTemplate(), providerId, modelName, null);
     }
 
     // ─── 会话管理 ────────────────────────────────────────────────
 
     /**
-     * 查找或创建指定 workflowStep 的会话。
+     * 创建新的会话（始终创建新会话，不再复用）。
      */
-    private AgentSessionPO findOrCreateSession(UUID projectId, String workflowStep, String agentName) {
-        // 查找该 workflowStep 的最新会话
-        Optional<AgentSessionPO> existing = sessionRepository
-                .findByProjectIdAndWorkflowStepOrderByCreatedAtDesc(projectId, workflowStep)
-                .stream()
-                .findFirst();
-
-        if (existing.isPresent()) {
-            return existing.get();
-        }
-
-        // 创建新会话
+    private AgentSessionPO createSession(UUID projectId, String workflowStep, String agentName) {
         ProjectPO project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("项目不存在: " + projectId));
 
