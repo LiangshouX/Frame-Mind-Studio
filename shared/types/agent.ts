@@ -16,6 +16,7 @@ export interface AgentSession {
   agentName: AgentName
   status: SessionStatus
   title?: string
+  titleSource?: 'auto' | 'manual'
   messageCount?: number
   tokensConsumed: number
   startedAt?: string

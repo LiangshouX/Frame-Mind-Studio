@@ -6,7 +6,7 @@ import { ResizablePanel } from '@/components/shared/resizable-panel'
 import { ChatHistorySidebar } from '@/components/scriptmind/chat-history-sidebar'
 import { useAgentStore } from '@/stores/agent-store'
 import { connectAgentWebSocket } from '@/lib/websocket/stomp-client'
-import { sendChatMessage, triggerGeneration, getChatHistory } from '@/lib/api/agent-api'
+import { sendChatMessage, triggerGeneration } from '@/lib/api/agent-api'
 import type { AgentWebSocketMessage, WorkflowStep } from '@/types/agent'
 
 interface WorkflowLayoutProps {
@@ -43,6 +43,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
     getModelSelection,
     loadSessionList,
     createNewSession,
+    wsDisconnectVersion,
   } = useAgentStore()
 
   const wsRef = useRef<ReturnType<typeof connectAgentWebSocket> | null>(null)
@@ -54,6 +55,14 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
     // 加载会话列表
     loadSessionList(projectId, step)
   }, [step, setActiveTab, projectId, loadSessionList])
+
+  // 监听 session 切换信号，断开旧 WebSocket
+  useEffect(() => {
+    if (wsRef.current) {
+      wsRef.current.disconnect()
+      wsRef.current = null
+    }
+  }, [wsDisconnectVersion])
 
   // WebSocket 消息处理
   const handleMessage = useCallback(

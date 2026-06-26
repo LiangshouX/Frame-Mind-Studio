@@ -96,7 +96,7 @@ public class PipelineOrchestrator {
             session.setStartedAt(LocalDateTime.now());
             sessionRepository.save(session);
 
-            String sessionId = session.getId().toString();
+            String actualSessionId = session.getId().toString();
 
             // 获取 Agent 定义
             AgentDefinition definition = agentDefinitions.get(agentName);
@@ -116,13 +116,13 @@ public class PipelineOrchestrator {
 
             // 创建 RuntimeContext，传入 sessionId 以便状态持久化
             RuntimeContext runtimeContext = RuntimeContext.builder()
-                    .sessionId(sessionId)
+                    .sessionId(actualSessionId)
                     .build();
 
             // 调用 Agent 并桥接事件流
-            eventBridge.bridge(sessionId, agentName, agent.streamEvents(userMsg, runtimeContext), tokensConsumed -> {
+            eventBridge.bridge(actualSessionId, agentName, agent.streamEvents(userMsg, runtimeContext), tokensConsumed -> {
                 // 完成回调
-                budgetHook.consumeTokens(projectId, tokensConsumed, sessionId);
+                budgetHook.consumeTokens(projectId, tokensConsumed, actualSessionId);
                 session.setStatus("completed");
                 session.setCompletedAt(LocalDateTime.now());
                 session.setTokensConsumed(tokensConsumed);
@@ -130,13 +130,13 @@ public class PipelineOrchestrator {
 
                 // 自动生成会话标题
                 try {
-                    agentSessionService.generateTitle(UUID.fromString(sessionId));
+                    agentSessionService.generateTitle(UUID.fromString(actualSessionId));
                 } catch (Exception e) {
-                    log.warn("自动生成标题失败: sessionId={}", sessionId, e);
+                    log.warn("自动生成标题失败: sessionId={}", actualSessionId, e);
                 }
             });
 
-            return CompletableFuture.completedFuture(sessionId);
+            return CompletableFuture.completedFuture(actualSessionId);
 
         } catch (Exception e) {
             log.error("Agent 调用失败: session={}, step={}", session.getId(), workflowStep, e);
@@ -174,24 +174,16 @@ public class PipelineOrchestrator {
     // ─── 会话管理 ────────────────────────────────────────────────
 
     /**
-     * 创建新的会话（始终创建新会话，不再复用）。
+     * 创建新的会话（委托给 AgentSessionService，始终创建新会话，不再复用）。
      */
     private AgentSessionPO createSession(UUID projectId, String workflowStep, String agentName) {
         ProjectPO project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("项目不存在: " + projectId));
 
-        AgentSessionPO session = new AgentSessionPO();
-        session.setProject(project);
-        session.setSessionType("chat");
-        session.setWorkflowStep(workflowStep);
-        session.setAgentName(agentName);
-        session.setStatus("pending");
-
         ObjectNode inputData = objectMapper.createObjectNode();
         inputData.put("workflow_step", workflowStep);
         inputData.put("agent_name", agentName);
-        session.setInputData(inputData);
 
-        return sessionRepository.save(session);
+        return agentSessionService.createSession(project, "chat", workflowStep, agentName, inputData);
     }
 }

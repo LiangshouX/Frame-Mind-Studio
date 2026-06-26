@@ -99,9 +99,13 @@ public class ProjectAgentController {
     }
 
     /**
-     * 获取指定工作流步骤的聊天历史（兼容旧接口，返回最新会话）。
+     * 获取指定工作流步骤的聊天历史（已废弃，返回最新会话作为兼容）。
+     *
+     * @deprecated 请使用 GET /sessions?workflow_step=xxx 获取会话列表，
+     *             再使用 GET /sessions/{sessionId} 获取会话详情
      */
-    @GetMapping("/sessions/{workflowStep}")
+    @Deprecated
+    @GetMapping("/history/{workflowStep}")
     public ResponseEntity<Map<String, Object>> getChatHistory(
             @PathVariable UUID projectId,
             @PathVariable String workflowStep) {
@@ -143,10 +147,20 @@ public class ProjectAgentController {
 
     // ─── 会话管理端点 ────────────────────────────────────────────────
 
+    /** workflowStep → agentName 映射 */
+    private static final Map<String, String> STEP_TO_AGENT = Map.of(
+            "worldview", "creative_agent",
+            "synopsis", "synopsis_agent",
+            "characters", "character_agent",
+            "outline", "outline_agent",
+            "script", "script_agent"
+    );
+
     /**
      * 分页获取会话列表。
+     * GET /sessions?workflow_step={step}&page={page}&size={size}
      */
-    @GetMapping("/session-list")
+    @GetMapping("/sessions")
     public ResponseEntity<Page<Map<String, Object>>> listSessions(
             @PathVariable UUID projectId,
             @RequestParam String workflowStep,
@@ -160,8 +174,9 @@ public class ProjectAgentController {
 
     /**
      * 获取单个会话详情（含消息列表）。
+     * GET /sessions/{sessionId}
      */
-    @GetMapping("/session-detail/{sessionId}")
+    @GetMapping("/sessions/{sessionId}")
     public ResponseEntity<Map<String, Object>> getSessionDetail(
             @PathVariable UUID projectId,
             @PathVariable UUID sessionId) {
@@ -173,20 +188,26 @@ public class ProjectAgentController {
 
     /**
      * 创建新会话。
+     * POST /sessions
      */
-    @PostMapping("/session-create")
+    @PostMapping("/sessions")
     public ResponseEntity<Map<String, Object>> createSession(
             @PathVariable UUID projectId,
             @Valid @RequestBody CreateSessionRequest request) {
 
+        String agentName = STEP_TO_AGENT.getOrDefault(request.workflowStep(), "unknown");
+
         AgentSessionPO session = agentSessionService.createSession(
                 agentSessionService.getProjectOrThrow(projectId),
                 "chat",
+                request.workflowStep(),
+                agentName,
                 null);
 
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("id", session.getId().toString());
         result.put("workflow_step", request.workflowStep());
+        result.put("agent_name", agentName);
         result.put("status", session.getStatus());
         result.put("title", session.getTitle());
         result.put("created_at", session.getCreatedAt() != null ? session.getCreatedAt().toString() : null);
@@ -196,8 +217,9 @@ public class ProjectAgentController {
 
     /**
      * 更新会话标题。
+     * PATCH /sessions/{sessionId}/title
      */
-    @PatchMapping("/session-title/{sessionId}")
+    @PatchMapping("/sessions/{sessionId}/title")
     public ResponseEntity<Map<String, Object>> updateTitle(
             @PathVariable UUID projectId,
             @PathVariable UUID sessionId,
@@ -213,8 +235,9 @@ public class ProjectAgentController {
 
     /**
      * 删除会话。
+     * DELETE /sessions/{sessionId}
      */
-    @DeleteMapping("/session-delete/{sessionId}")
+    @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<Void> deleteSession(
             @PathVariable UUID projectId,
             @PathVariable UUID sessionId) {

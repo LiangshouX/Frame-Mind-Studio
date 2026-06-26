@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -220,8 +221,21 @@ public class JpaAgentStateStore implements AgentStateStore {
                 }
             } else if (block instanceof ToolResultBlock toolResultBlock) {
                 blockNode.put("type", "tool_result");
-                blockNode.put("tool_use_id", toolResultBlock.getToolUseId());
-                blockNode.put("content", toolResultBlock.getTextContent());
+                blockNode.put("id", toolResultBlock.getId() != null ? toolResultBlock.getId() : "");
+                blockNode.put("name", toolResultBlock.getName() != null ? toolResultBlock.getName() : "");
+                // 序列化 output (List<ContentBlock>) 为 JSON 数组
+                List<ContentBlock> output = toolResultBlock.getOutput();
+                if (output != null && !output.isEmpty()) {
+                    ArrayNode outputArray = blockNode.putArray("output");
+                    for (ContentBlock outBlock : output) {
+                        if (outBlock instanceof TextBlock tb) {
+                            ObjectNode outNode = objectMapper.createObjectNode();
+                            outNode.put("type", "text");
+                            outNode.put("text", tb.getText());
+                            outputArray.add(outNode);
+                        }
+                    }
+                }
             }
             blocksArray.add(blockNode);
         }
@@ -254,20 +268,41 @@ public class JpaAgentStateStore implements AgentStateStore {
                     case "tool_use" -> {
                         String id = blockNode.has("id") ? blockNode.get("id").asText() : null;
                         String name = blockNode.has("name") ? blockNode.get("name").asText() : "unknown";
-                        Object input = null;
-                        if (blockNode.has("input") && !blockNode.get("input").isNull()) {
-                            input = objectMapper.convertValue(blockNode.get("input"), Object.class);
-                        }
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> input = blockNode.has("input") && !blockNode.get("input").isNull()
+                                ? objectMapper.convertValue(blockNode.get("input"), Map.class)
+                                : null;
                         blocks.add(ToolUseBlock.builder()
                                 .id(id)
                                 .name(name)
                                 .input(input)
                                 .build());
                     }
-                    case "tool_result" -> blocks.add(ToolResultBlock.builder()
-                            .toolUseId(blockNode.has("tool_use_id") ? blockNode.get("tool_use_id").asText() : null)
-                            .content(blockNode.has("content") ? blockNode.get("content").asText("") : "")
-                            .build());
+                    case "tool_result" -> {
+                        String id = blockNode.has("id") ? blockNode.get("id").asText() : null;
+                        String name = blockNode.has("name") ? blockNode.get("name").asText() : "";
+                        // 从 output 数组重建 ContentBlock 列表
+                        List<ContentBlock> outputBlocks = new ArrayList<>();
+                        if (blockNode.has("output") && blockNode.get("output").isArray()) {
+                            for (JsonNode outNode : blockNode.get("output")) {
+                                if ("text".equals(outNode.get("type").asText())) {
+                                    outputBlocks.add(TextBlock.builder()
+                                            .text(outNode.get("text").asText(""))
+                                            .build());
+                                }
+                            }
+                        }
+                        if (outputBlocks.isEmpty()) {
+                            // 兼容旧格式：从 content 字段构建
+                            String content = blockNode.has("content") ? blockNode.get("content").asText("") : "";
+                            outputBlocks.add(TextBlock.builder().text(content).build());
+                        }
+                        blocks.add(ToolResultBlock.builder()
+                                .id(id)
+                                .name(name)
+                                .output(outputBlocks)
+                                .build());
+                    }
                     default -> blocks.add(TextBlock.builder()
                             .text(blockNode.toString())
                             .build());

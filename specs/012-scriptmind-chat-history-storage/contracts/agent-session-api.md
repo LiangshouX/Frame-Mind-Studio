@@ -2,6 +2,9 @@
 
 **Base URL**: `/api/v1/projects/{projectId}/agent`
 
+> **Note**: 早期实现使用了非 RESTful 路径（`/session-list`、`/session-create` 等），
+> V2 已修正为以下 RESTful 端点。旧端点 `/history/{workflowStep}` 保留作为兼容。
+
 ## 1. 获取会话列表
 
 **GET** `/sessions?workflow_step={step}&page={page}&size={size}`

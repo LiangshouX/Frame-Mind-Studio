@@ -6,7 +6,17 @@
 
 ## Summary
 
-优化 ScriptMind 模块的 Agent 对话聊天记录存储，解决四个核心问题：会话不隔离、无历史回溯、无自动标题、消息结构不匹配 AgentScope Block。通过数据库迁移增加 `title` 字段、重构会话管理逻辑、新增会话列表/删除 API、修复消息序列化保真度、前端新增右侧边栏对话历史面板来实现。
+优化 ScriptMind 模块的 Agent 对话聊天记录存储，解决四个核心问题：会话不隔离、无历史回溯、无自动标题、消息结构不匹配 AgentScope Block。通过两次数据库迁移（V4: 增加 `title` 字段，V5: 增加 `title_source` 字段）、重构会话管理逻辑（统一 `AgentSessionService.createSession()`）、新增 RESTful 会话列表/删除 API、修复消息序列化保真度、前端新增右侧边栏对话历史面板来实现。
+
+## V2 修正（2026-06-26）
+
+基于初版实现的不足，V2 修正了以下问题：
+
+1. **REST API 路径规范化**：将非 RESTful 的 `/session-list`、`/session-create` 等路径改为标准的 `/sessions`、`POST /sessions` 等
+2. **会话创建修复**：`AgentSessionService.createSession()` 新增支持 `workflowStep`/`agentName` 参数的重载；`ProjectAgentController.createSession()` 现在正确传递 workflow_step
+3. **标题生成改进**：从原始截取 50 字符改为智能核心主题提取（去除常见请求前缀），新增 `title_source` 列追踪标题来源
+4. **WebSocket 生命周期**：Session 切换时自动断开旧 WebSocket 连接，删除活跃会话后自动加载替换会话的消息
+5. **代码去重**：`PipelineOrchestrator` 不再自己创建 session PO，统一委托给 `AgentSessionService`
 
 ## Technical Context
 
@@ -74,7 +84,8 @@ backend-java/
 │       ├── core/JpaAgentStateStore.java            # 修复 block 类型保真
 │       └── hook/SessionTitleHook.java              # 新增：自动生成标题
 ├── src/main/resources/db/migration/
-│   └── V4__chat_history_storage.sql        # 新增：title 列 + 索引
+│   ├── V4__chat_history_storage.sql        # 新增：title 列 + 索引
+│   └── V5__fix_session_management.sql      # 新增：title_source 列
 └── src/test/java/...
 
 frontend/src/

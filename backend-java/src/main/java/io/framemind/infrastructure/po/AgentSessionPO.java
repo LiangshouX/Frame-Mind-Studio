@@ -74,6 +74,10 @@ public class AgentSessionPO {
     @Column(name = "title", columnDefinition = "varchar(200)")
     private String title;
 
+    /** 标题来源：auto（自动生成）或 manual（用户手动编辑） */
+    @Column(name = "title_source", columnDefinition = "varchar(20) default 'auto'")
+    private String titleSource = "auto";
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

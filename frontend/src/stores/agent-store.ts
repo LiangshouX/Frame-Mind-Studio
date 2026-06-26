@@ -52,6 +52,8 @@ interface AgentStore {
   budgetWarning: string | null
   /** WebSocket 连接状态 */
   connectionStatus: ConnectionStatus
+  /** WebSocket 断开计数器（变化时触发 disconnect） */
+  wsDisconnectVersion: number
   /** 每个 Tab 的模型选择 */
   modelSelections: Partial<Record<WorkflowStep, ModelSelection>>
 
@@ -97,6 +99,8 @@ interface AgentStore {
   removeSession: (projectId: string, sessionId: string, workflowStep: WorkflowStep) => Promise<void>
   /** 更新会话标题（本地） */
   updateSessionTitleLocal: (workflowStep: WorkflowStep, sessionId: string, title: string) => void
+  /** 通知 WebSocket 断开（session 切换时调用） */
+  signalWsDisconnect: () => void
 }
 
 const createEmptyTab = (): TabSession => ({
@@ -168,6 +172,7 @@ const initialState = {
   tokensConsumed: 0,
   budgetWarning: null as string | null,
   connectionStatus: 'disconnected' as ConnectionStatus,
+  wsDisconnectVersion: 0,
   modelSelections: loadModelSelections(),
 }
 
@@ -329,6 +334,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   switchSession: async (projectId, sessionId, workflowStep) => {
+    // 断开旧 WebSocket（切换会话时旧连接不再需要）
+    get().signalWsDisconnect()
+
     const detail = await getSessionDetail(projectId, sessionId)
     if (!detail) return
 
@@ -344,7 +352,14 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
     set((state) => {
       const tab = state.sessions[workflowStep] || createEmptyTab()
-      const updatedTab = { ...tab, messages, sessionId, title: detail.title || null }
+      const updatedTab = {
+        ...tab,
+        messages,
+        sessionId,
+        title: detail.title || null,
+        isRunning: false,
+        isStreaming: false,
+      }
       const activeSessionIds = loadActiveSessionIds()
       activeSessionIds[workflowStep] = sessionId
       saveActiveSessionIds(activeSessionIds)
@@ -352,11 +367,15 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         sessions: { ...state.sessions, [workflowStep]: updatedTab },
         sessionId,
         activeTab: workflowStep,
+        collapsibleBlocks: [], // 清除旧的可折叠块
       }
     })
   },
 
   createNewSession: async (projectId, workflowStep) => {
+    // 断开旧 WebSocket
+    get().signalWsDisconnect()
+
     const result = await createSession(projectId, workflowStep)
     const tab = createEmptyTab()
     tab.sessionId = result.id
@@ -369,6 +388,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         sessions: { ...state.sessions, [workflowStep]: tab },
         sessionId: result.id,
         activeTab: workflowStep,
+        collapsibleBlocks: [], // 清除旧的可折叠块
       }
     })
 
@@ -379,18 +399,21 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   removeSession: async (projectId, sessionId, workflowStep) => {
     await apiDeleteSession(projectId, sessionId)
 
+    const { sessions } = get()
+    const tab = sessions[workflowStep]
+    const wasActiveSession = tab?.sessionId === sessionId
+
+    // 先更新列表（移除被删除的会话）
     set((state) => {
       const items = (state.sessionsByTab[workflowStep] || []).filter((s) => s.id !== sessionId)
       const activeSessionIds = loadActiveSessionIds()
 
-      // 如果删除的是当前活跃会话，切换到列表中第一个或清空
-      const tab = state.sessions[workflowStep]
       let updatedTab = tab
       let newSessionId = state.sessionId
 
-      if (tab?.sessionId === sessionId) {
+      if (wasActiveSession) {
         if (items.length > 0) {
-          // 切换到第一个会话
+          // 切换到第一个会话（先创建空壳，稍后加载详情）
           newSessionId = items[0].id
           updatedTab = { ...createEmptyTab(), sessionId: items[0].id, title: items[0].title }
           activeSessionIds[workflowStep] = items[0].id
@@ -408,6 +431,40 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         sessionId: newSessionId,
       }
     })
+
+    // 如果删除了活跃会话，加载替换会话的消息
+    if (wasActiveSession) {
+      const state = get()
+      const newSessionId = state.sessions[workflowStep]?.sessionId
+      if (newSessionId) {
+        try {
+          const detail = await getSessionDetail(projectId, newSessionId)
+          if (detail) {
+            const messages: AgentMessageUI[] = (detail.messages || []).map((m) => ({
+              id: m.id,
+              agentName: detail.agent_name || 'assistant',
+              role: m.role as AgentMessageUI['role'],
+              content: m.content || '',
+              messageType: m.message_type,
+              isStreaming: false,
+              timestamp: m.created_at || new Date().toISOString(),
+            }))
+            set((state) => {
+              const tab = state.sessions[workflowStep]
+              if (!tab) return {}
+              return {
+                sessions: {
+                  ...state.sessions,
+                  [workflowStep]: { ...tab, messages, title: detail.title || null },
+                },
+              }
+            })
+          }
+        } catch {
+          // 加载失败时保持空消息列表
+        }
+      }
+    }
   },
 
   updateSessionTitleLocal: (workflowStep, sessionId, title) => {
@@ -422,5 +479,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         sessions: { ...state.sessions, [workflowStep]: updatedTab },
       }
     })
+  },
+
+  signalWsDisconnect: () => {
+    set((state) => ({ wsDisconnectVersion: state.wsDisconnectVersion + 1 }))
   },
 }))

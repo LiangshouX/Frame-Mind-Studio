@@ -50,14 +50,14 @@ export async function triggerGeneration(
   })
 }
 
-/** 获取指定工作流步骤的聊天历史（兼容旧接口） */
+/** 获取指定工作流步骤的聊天历史（已废弃，返回最新会话作为兼容） */
 export async function getChatHistory(
   projectId: string,
   workflowStep: WorkflowStep
 ): Promise<AgentSession | null> {
   try {
     return await apiFetch<AgentSession>(
-      `/projects/${projectId}/agent/sessions/${workflowStep}`
+      `/projects/${projectId}/agent/history/${workflowStep}`
     )
   } catch (error: any) {
     if (error?.status === 404) return null
@@ -95,7 +95,7 @@ export async function listSessions(
   size: number = 20
 ): Promise<SessionListPage> {
   return apiFetch<SessionListPage>(
-    `/projects/${projectId}/agent/session-list?workflow_step=${workflowStep}&page=${page}&size=${size}`
+    `/projects/${projectId}/agent/sessions?workflow_step=${workflowStep}&page=${page}&size=${size}`
   )
 }
 
@@ -106,7 +106,7 @@ export async function getSessionDetail(
 ): Promise<AgentSession | null> {
   try {
     return await apiFetch<AgentSession>(
-      `/projects/${projectId}/agent/session-detail/${sessionId}`
+      `/projects/${projectId}/agent/sessions/${sessionId}`
     )
   } catch (error: any) {
     if (error?.status === 404) return null
@@ -119,7 +119,7 @@ export async function createSession(
   projectId: string,
   workflowStep: WorkflowStep
 ): Promise<{ id: string; workflow_step: string; status: string; title: string | null; created_at: string }> {
-  return apiFetch(`/projects/${projectId}/agent/session-create`, {
+  return apiFetch(`/projects/${projectId}/agent/sessions`, {
     method: 'POST',
     body: JSON.stringify({ workflow_step: workflowStep }),
   })
@@ -131,7 +131,7 @@ export async function updateSessionTitle(
   sessionId: string,
   title: string
 ): Promise<{ id: string; title: string }> {
-  return apiFetch(`/projects/${projectId}/agent/session-title/${sessionId}`, {
+  return apiFetch(`/projects/${projectId}/agent/sessions/${sessionId}/title`, {
     method: 'PATCH',
     body: JSON.stringify({ title }),
   })
@@ -142,7 +142,7 @@ export async function deleteSession(
   projectId: string,
   sessionId: string
 ): Promise<void> {
-  return apiFetch<void>(`/projects/${projectId}/agent/session-delete/${sessionId}`, {
+  return apiFetch<void>(`/projects/${projectId}/agent/sessions/${sessionId}`, {
     method: 'DELETE',
   })
 }

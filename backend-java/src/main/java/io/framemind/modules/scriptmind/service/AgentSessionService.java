@@ -70,6 +70,31 @@ public class AgentSessionService {
     }
 
     /**
+     * 创建一个新的 Agent 会话（带 workflowStep 和 agentName）。
+     *
+     * @param project      所属项目
+     * @param sessionType  会话类型
+     * @param workflowStep 工作流步骤
+     * @param agentName    Agent 名称
+     * @param inputData    输入数据
+     * @return 创建的会话持久化对象
+     */
+    @Transactional
+    public AgentSessionPO createSession(ProjectPO project, String sessionType,
+                                        String workflowStep, String agentName, JsonNode inputData) {
+        AgentSessionPO session = new AgentSessionPO();
+        session.setProject(project);
+        session.setProjectId(project.getId());
+        session.setSessionType(sessionType);
+        session.setWorkflowStep(workflowStep);
+        session.setAgentName(agentName);
+        session.setStatus("pending");
+        session.setTokensConsumed(0);
+        session.setInputData(inputData);
+        return agentSessionRepository.save(session);
+    }
+
+    /**
      * 根据会话 ID 查询会话。
      *
      * @param sessionId 会话 ID
@@ -136,6 +161,7 @@ public class AgentSessionService {
             summary.put("agent_name", session.getAgentName());
             summary.put("status", session.getStatus());
             summary.put("title", session.getTitle());
+            summary.put("title_source", session.getTitleSource() != null ? session.getTitleSource() : "auto");
             summary.put("tokens_consumed", session.getTokensConsumed());
             summary.put("created_at", session.getCreatedAt() != null ? session.getCreatedAt().toString() : null);
             long msgCount = agentMessageRepository.countBySessionId(session.getId());
@@ -176,6 +202,7 @@ public class AgentSessionService {
             result.put("agent_name", session.getAgentName());
             result.put("status", session.getStatus());
             result.put("title", session.getTitle());
+            result.put("title_source", session.getTitleSource() != null ? session.getTitleSource() : "auto");
             result.put("tokens_consumed", session.getTokensConsumed());
             result.put("created_at", session.getCreatedAt() != null ? session.getCreatedAt().toString() : null);
             result.put("messages", messageDtos);
@@ -199,7 +226,7 @@ public class AgentSessionService {
     }
 
     /**
-     * 更新会话标题。
+     * 更新会话标题（用户手动编辑）。
      *
      * @param sessionId 会话 ID
      * @param title     新标题
@@ -209,15 +236,21 @@ public class AgentSessionService {
         AgentSessionPO session = agentSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("会话不存在: " + sessionId));
         session.setTitle(title);
+        session.setTitleSource("manual");
         agentSessionRepository.save(session);
-        log.info("会话标题已更新: sessionId={}, title={}", sessionId, title);
+        log.info("会话标题已手动更新: sessionId={}, title={}", sessionId, title);
     }
 
     /**
      * 自动生成会话标题。
      * <p>
-     * 取会话中第一条用户消息的前 50 个字符作为标题。
-     * 如果标题已存在（用户手动设置），则不覆盖。
+     * 从第一条用户消息中智能提取核心主题作为标题：
+     * <ol>
+     *   <li>去除常见的中英文请求前缀（"请帮我"、"Help me" 等）</li>
+     *   <li>截取核心主题（最多 40 字符）</li>
+     *   <li>添加适当的后缀使其更像标题</li>
+     * </ol>
+     * 如果标题已被用户手动设置，则不覆盖。
      * 失败时回退到时间戳格式。
      *
      * @param sessionId 会话 ID
@@ -227,8 +260,8 @@ public class AgentSessionService {
         AgentSessionPO session = agentSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new EntityNotFoundException("会话不存在: " + sessionId));
 
-        // 如果已有标题（用户手动设置），不覆盖
-        if (session.getTitle() != null && !session.getTitle().isEmpty()) {
+        // 如果是用户手动设置的标题，不覆盖
+        if ("manual".equals(session.getTitleSource())) {
             return;
         }
 
@@ -242,10 +275,7 @@ public class AgentSessionService {
                     .findFirst()
                     .map(m -> {
                         String content = m.getContent() != null ? m.getContent() : "";
-                        // 截取前 50 个字符
-                        return content.length() > 50
-                                ? content.substring(0, 50) + "..."
-                                : content;
+                        return extractTitleFromMessage(content);
                     })
                     .orElse(null);
 
@@ -257,6 +287,7 @@ public class AgentSessionService {
             }
 
             session.setTitle(title);
+            session.setTitleSource("auto");
             agentSessionRepository.save(session);
             log.info("会话标题已自动生成: sessionId={}, title={}", sessionId, title);
 
@@ -267,12 +298,98 @@ public class AgentSessionService {
                         .ofPattern("MM-dd HH:mm")
                         .format(java.time.LocalDateTime.now());
                 session.setTitle(fallbackTitle);
+                session.setTitleSource("auto");
                 agentSessionRepository.save(session);
                 log.warn("标题自动生成失败，使用回退标题: sessionId={}, title={}", sessionId, fallbackTitle);
             } catch (Exception ex) {
                 log.error("标题生成完全失败: sessionId={}", sessionId, ex);
             }
         }
+    }
+
+    /**
+     * 从用户消息中智能提取标题。
+     * <p>
+     * 去除常见前缀，保留核心主题内容。
+     */
+    private String extractTitleFromMessage(String content) {
+        if (content == null || content.isBlank()) return null;
+
+        String trimmed = content.trim();
+
+        // 去除常见中文请求前缀
+        String[] zhPrefixes = {
+                "请帮我设计", "请帮我写", "请帮我创建", "请帮我生成", "请帮我构思",
+                "请帮我", "请设计", "请写", "请创建", "请生成", "请构思",
+                "帮我设计", "帮我写", "帮我创建", "帮我生成", "帮我构思",
+                "帮我", "我想要", "我需要", "我想", "我要",
+                "能不能", "可否", "可以", "麻烦", "辛苦"
+        };
+        for (String prefix : zhPrefixes) {
+            if (trimmed.startsWith(prefix)) {
+                trimmed = trimmed.substring(prefix.length()).trim();
+                break;
+            }
+        }
+
+        // 去除常见英文请求前缀
+        String[] enPrefixes = {
+                "Help me design ", "Help me write ", "Help me create ", "Help me generate ",
+                "Help me ", "Please help me design ", "Please help me write ", "Please help me ",
+                "Please design ", "Please write ", "Please create ", "Please generate ",
+                "I want to ", "I need to ", "I would like to ",
+                "Can you help me ", "Can you ", "Could you ",
+                "Design ", "Write ", "Create ", "Generate ",
+        };
+        for (String prefix : enPrefixes) {
+            if (trimmed.startsWith(prefix)) {
+                trimmed = trimmed.substring(prefix.length()).trim();
+                break;
+            }
+        }
+
+        // 去除开头的标点符号（包括中英文标点）
+        trimmed = trimmed.replaceAll("^[\\p{P}\\p{S}\\s]+", "").trim();
+
+        // 如果去前缀后为空，回退到原始截取
+        if (trimmed.isEmpty()) {
+            trimmed = content.trim();
+        }
+
+        // 截取核心主题（最多 40 字符），尝试在句末标点处截断
+        if (trimmed.length() > 40) {
+            int cutPoint = -1;
+            for (char c : new char[]{'。', '！', '？', '.', '!', '?', '；', ';', '，', ','}) {
+                int idx = trimmed.lastIndexOf(c, 40);
+                if (idx > 15) { // 至少保留 15 个字符
+                    cutPoint = idx + 1;
+                    break;
+                }
+            }
+            if (cutPoint > 0) {
+                trimmed = trimmed.substring(0, cutPoint).trim();
+            } else {
+                trimmed = trimmed.substring(0, 40).trim();
+            }
+        }
+
+        // 确保标题以完整字符结尾（不在词中间截断）
+        if (trimmed.length() > 30) {
+            // 尝试在最后一个空格或标点处截断
+            int lastBreak = -1;
+            for (int i = Math.min(trimmed.length() - 1, 35); i >= 20; i--) {
+                char c = trimmed.charAt(i);
+                if (c == ' ' || c == '，' || c == ',' || c == '的' || c == '了' || c == '、') {
+                    lastBreak = i + 1;
+                    break;
+                }
+            }
+            if (lastBreak > 0) {
+                trimmed = trimmed.substring(0, lastBreak).trim();
+            }
+        }
+
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /**

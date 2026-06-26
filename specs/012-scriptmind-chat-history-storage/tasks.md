@@ -8,6 +8,23 @@
 
 **Organization**: 按用户故事分组，支持独立实现和测试。
 
+## V2 修正任务（2026-06-26）
+
+初版实现存在以下问题，V2 进行了修正：
+
+- [x] T032 [V2] 新增 Flyway 迁移 `V5__fix_session_management.sql`：在 `agent_sessions` 表新增 `title_source` 列（VARCHAR 20, default 'auto'）
+- [x] T033 [V2] 更新 `AgentSessionPO.java`：新增 `titleSource` 字段
+- [x] T034 [V2] 重构 `AgentSessionService.createSession()`：新增重载方法接受 `workflowStep` 和 `agentName` 参数
+- [x] T035 [V2] 改进 `AgentSessionService.generateTitle()`：智能核心主题提取（去除常见请求前缀），添加 `titleSource` 标记；`extractTitleFromMessage()` 辅助方法
+- [x] T036 [V2] 修复 `AgentSessionService.updateTitle()`：设置 `titleSource = "manual"`
+- [x] T037 [V2] 修复 `ProjectAgentController` REST API 路径：`/session-list` → `/sessions`、`/session-create` → `POST /sessions` 等
+- [x] T038 [V2] 修复 `ProjectAgentController.createSession()`：正确传递 `workflowStep`，通过 `STEP_TO_AGENT` 映射确定 `agentName`
+- [x] T039 [V2] 重构 `PipelineOrchestrator.createSession()`：委托给 `AgentSessionService.createSession()`，消除代码重复
+- [x] T040 [V2] 前端 API 路径同步：`agent-api.ts` 中所有端点路径更新为 RESTful 格式
+- [x] T041 [V2] 修复 `agent-store.ts` 的 `removeSession()`：删除活跃会话后自动加载替换会话的消息
+- [x] T042 [V2] 添加 `wsDisconnectVersion` 信号机制：会话切换时自动断开旧 WebSocket；`switchSession`、`createNewSession` 调用 `signalWsDisconnect()`
+- [x] T043 [V2] 更新 `workflow-layout`：监听 `wsDisconnectVersion` 并断开 WebSocket；移除未使用的 `getChatHistory` 导入
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: 可并行执行（不同文件，无依赖）
