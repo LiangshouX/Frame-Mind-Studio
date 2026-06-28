@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { X, Download, FileText, FileJson, Loader2 } from 'lucide-react'
 import * as workflowApi from '@/lib/api/workflow'
 
@@ -15,11 +15,59 @@ type ExportFormat = 'json' | 'fountain'
 /**
  * 导出剧本对话框。
  * 支持 JSON 和 Fountain 格式。
+ * 支持 Escape 键关闭、遮罩层点击关闭、焦点陷阱。
  */
 export function ExportDialog({ projectId, open, onClose }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('json')
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  const handleClose = () => {
+    setError(null)
+    onClose()
+  }
+
+  // Escape 键关闭对话框
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // 焦点陷阱：Tab 键循环限制在对话框内
+  useEffect(() => {
+    if (!open || !dialogRef.current) return
+    const dialog = dialogRef.current
+    const getFocusable = () =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      ))
+    // 打开时自动聚焦第一个可交互元素
+    const focusable = getFocusable()
+    focusable[0]?.focus()
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const items = getFocusable()
+      if (items.length === 0) return
+      const first = items[0], last = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus()
+      }
+    }
+    dialog.addEventListener('keydown', handleTab)
+    return () => dialog.removeEventListener('keydown', handleTab)
+  }, [open])
 
   if (!open) return null
 
@@ -65,14 +113,18 @@ export function ExportDialog({ projectId, open, onClose }: ExportDialogProps) {
     }
   }
 
-  const handleClose = () => {
-    setError(null)
-    onClose()
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        className="bg-[var(--bg-card)] rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
           <h2 className="text-lg font-bold text-[var(--text-primary)]">导出剧本</h2>

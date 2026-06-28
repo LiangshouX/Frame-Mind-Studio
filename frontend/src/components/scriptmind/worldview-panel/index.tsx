@@ -5,6 +5,7 @@ import { Loader2, Save, Sparkles, Globe, BookOpen, MapPin, Palette, Upload } fro
 import { WorldSettingContent } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
 import { useToast } from '@/components/shared/toast/toast-context'
+import { useAgentStore } from '@/stores/agent-store'
 
 interface WorldviewPanelProps {
   projectId: string
@@ -29,7 +30,8 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
   const [content, setContent] = useState<WorldSettingContent>(DEFAULT_CONTENT)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  // 从 agent store 读取当前 Tab 的运行状态，替代本地 generating state
+  const isRunning = useAgentStore((s) => s.sessions[s.activeTab]?.isRunning ?? false)
   const { showToast } = useToast()
 
   useEffect(() => {
@@ -132,10 +134,10 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
           )}
           <button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={isRunning}
             className="btn btn-outline flex items-center gap-2"
           >
-            {generating ? (
+            {isRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Sparkles className="h-4 w-4" />
@@ -172,7 +174,7 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
                 type="text"
                 value={content.genre}
                 onChange={e => updateField('genre', e.target.value)}
-                placeholder="如：古装仙侠、现代都市、悬疑推理..."
+                placeholder="题材类型，如：古装仙侠、现代都市、悬疑推理..."
                 className="input w-full"
               />
             </div>
@@ -182,7 +184,7 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
                 type="text"
                 value={content.style}
                 onChange={e => updateField('style', e.target.value)}
-                placeholder="如：热血燃向、虐恋情深、轻松搞笑..."
+                placeholder="风格基调，如：热血燃向、虐恋情深、轻松搞笑..."
                 className="input w-full"
               />
             </div>
@@ -192,7 +194,7 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
                 type="text"
                 value={content.era}
                 onChange={e => updateField('era', e.target.value)}
-                placeholder="如：架空古代、2024年、未来3000年..."
+                placeholder="时代背景，如：架空古代、2024年、未来3000年..."
                 className="input w-full"
               />
             </div>
@@ -202,7 +204,7 @@ export function WorldviewPanel({ projectId, onGenerate, onSkip, onUpload }: Worl
                 type="text"
                 value={content.uniqueSellingPoint}
                 onChange={e => updateField('uniqueSellingPoint', e.target.value)}
-                placeholder="如：重生复仇、穿越逆袭、双强CP..."
+                placeholder="核心卖点，如：重生复仇、穿越逆袭、双强CP..."
                 className="input w-full"
               />
             </div>

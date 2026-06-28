@@ -56,6 +56,64 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
     loadSessionList(projectId, step)
   }, [step, setActiveTab, projectId, loadSessionList])
 
+  // 组件挂载或 step 切换时：从 localStorage 恢复活跃会话并自动连接 WebSocket
+  useEffect(() => {
+    let activeSessionId: string | null = null
+    try {
+      const raw = localStorage.getItem('framemind-active-sessions')
+      if (raw) {
+        const saved = JSON.parse(raw) as Record<string, string>
+        activeSessionId = saved[step] || null
+      }
+    } catch {
+      // ignore
+    }
+
+    if (activeSessionId) {
+      // 同步 sessionId 到 store
+      useAgentStore.setState((state) => {
+        const tab = state.sessions[step]
+        if (tab && !tab.sessionId) {
+          return {
+            sessionId: activeSessionId,
+            sessions: {
+              ...state.sessions,
+              [step]: { ...tab, sessionId: activeSessionId },
+            },
+          }
+        }
+        return {}
+      })
+
+      // 断开旧连接
+      if (wsRef.current) {
+        wsRef.current.disconnect()
+        wsRef.current = null
+      }
+
+      // 自动建立 WebSocket 连接
+      wsRef.current = connectAgentWebSocket(activeSessionId, {
+        onMessage: handleMessage,
+        onConnectionChange: (status) => {
+          setConnectionStatus(status)
+          // WS 断开或出错时重置 isRunning，防止发送按钮卡死
+          if (status === 'disconnected' || status === 'error') {
+            setRunning(false)
+            finishStreaming()
+          }
+        },
+      })
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.disconnect()
+        wsRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step])
+
   // 监听 session 切换信号，断开旧 WebSocket
   useEffect(() => {
     if (wsRef.current) {
@@ -225,7 +283,14 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         // 建立新 WebSocket 连接
         wsRef.current = connectAgentWebSocket(result.session_id, {
           onMessage: handleMessage,
-          onConnectionChange: setConnectionStatus,
+          onConnectionChange: (status) => {
+            setConnectionStatus(status)
+            // WS 断开或出错时重置 isRunning，防止发送按钮卡死
+            if (status === 'disconnected' || status === 'error') {
+              setRunning(false)
+              finishStreaming()
+            }
+          },
         })
       } catch (error) {
         console.error('Failed to send message:', error)
@@ -241,7 +306,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         })
       }
     },
-    [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection, sessions]
+    [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection, sessions, finishStreaming]
   )
 
   // AI 一键生成
@@ -270,7 +335,14 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
 
       wsRef.current = connectAgentWebSocket(result.session_id, {
         onMessage: handleMessage,
-        onConnectionChange: setConnectionStatus,
+        onConnectionChange: (status) => {
+          setConnectionStatus(status)
+          // WS 断开或出错时重置 isRunning，防止发送按钮卡死
+          if (status === 'disconnected' || status === 'error') {
+            setRunning(false)
+            finishStreaming()
+          }
+        },
       })
     } catch (error) {
       console.error('Generation failed:', error)
@@ -285,7 +357,7 @@ export function WorkflowLayout({ projectId, step, children, onGenerate }: Workfl
         timestamp: new Date().toISOString(),
       })
     }
-  }, [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection])
+  }, [projectId, step, addMessage, setSession, setRunning, handleMessage, setConnectionStatus, getModelSelection, finishStreaming])
 
   // 新建对话
   const handleNewChat = useCallback(async () => {

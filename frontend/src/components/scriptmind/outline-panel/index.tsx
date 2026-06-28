@@ -5,6 +5,7 @@ import { Loader2, Save, Sparkles, List, ChevronDown, ChevronRight, Plus, Trash2,
 import { OutlineContent, OutlineEpisode, OutlineAct } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
 import { useToast } from '@/components/shared/toast/toast-context'
+import { useAgentStore } from '@/stores/agent-store'
 
 interface OutlinePanelProps {
   projectId: string
@@ -18,7 +19,8 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
   const [format, setFormat] = useState<'episode_list' | 'act_structure'>('episode_list')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  // 从 agent store 读取当前 Tab 的运行状态，替代本地 generating state
+  const isRunning = useAgentStore((s) => s.sessions[s.activeTab]?.isRunning ?? false)
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
   const { showToast } = useToast()
 
@@ -170,10 +172,10 @@ export function OutlinePanel({ projectId, projectType = 'short_drama', onGenerat
         <div className="flex items-center gap-2">
           <button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={isRunning}
             className="btn btn-outline flex items-center gap-2"
           >
-            {generating ? (
+            {isRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Sparkles className="h-4 w-4" />

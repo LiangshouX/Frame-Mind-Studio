@@ -75,6 +75,40 @@ export default function ScriptmindPage() {
     }
   }, [projectId, currentStep])
 
+  // script 步骤：从 localStorage 恢复活跃会话并自动连接 WebSocket
+  useEffect(() => {
+    if (currentStep !== 'script') return
+
+    let activeSessionId: string | null = null
+    try {
+      const raw = localStorage.getItem('framemind-active-sessions')
+      if (raw) {
+        const saved = JSON.parse(raw) as Record<string, string>
+        activeSessionId = saved['script'] || null
+      }
+    } catch {
+      // ignore
+    }
+
+    if (activeSessionId) {
+      setAgentSession(activeSessionId)
+
+      if (wsRef.current) wsRef.current.disconnect()
+      wsRef.current = connectAgentWebSocket(activeSessionId, {
+        onMessage: handleScriptWsMessage,
+        onConnectionChange: (status) => {
+          setAgentConnectionStatus(status)
+          // WS 断开或出错时重置 isRunning，防止发送按钮卡死
+          if (status === 'disconnected' || status === 'error') {
+            setAgentRunning(false)
+            finishStreaming()
+          }
+        },
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep])
+
   const handleStepChange = useCallback((step: WorkflowStep) => {
     setCurrentStep(step)
   }, [setCurrentStep])
@@ -173,12 +207,19 @@ export default function ScriptmindPage() {
       if (wsRef.current) wsRef.current.disconnect()
       wsRef.current = connectAgentWebSocket(result.session_id, {
         onMessage: handleScriptWsMessage,
-        onConnectionChange: setAgentConnectionStatus,
+        onConnectionChange: (status) => {
+          setAgentConnectionStatus(status)
+          // WS 断开或出错时重置 isRunning，防止发送按钮卡死
+          if (status === 'disconnected' || status === 'error') {
+            setAgentRunning(false)
+            finishStreaming()
+          }
+        },
       })
     } catch (error) {
       console.error('Failed to generate script:', error)
     }
-  }, [projectId, addAgentMessage, setAgentSession, handleScriptWsMessage, setAgentConnectionStatus])
+  }, [projectId, addAgentMessage, setAgentSession, handleScriptWsMessage, setAgentConnectionStatus, setAgentRunning, finishStreaming])
 
   // Script step AI 审查
   const handleAIReview = useCallback(async () => {
@@ -197,12 +238,19 @@ export default function ScriptmindPage() {
       if (wsRef.current) wsRef.current.disconnect()
       wsRef.current = connectAgentWebSocket(result.session_id, {
         onMessage: handleScriptWsMessage,
-        onConnectionChange: setAgentConnectionStatus,
+        onConnectionChange: (status) => {
+          setAgentConnectionStatus(status)
+          // WS 断开或出错时重置 isRunning，防止发送按钮卡死
+          if (status === 'disconnected' || status === 'error') {
+            setAgentRunning(false)
+            finishStreaming()
+          }
+        },
       })
     } catch (error) {
       console.error('AI review failed:', error)
     }
-  }, [projectId, addAgentMessage, setAgentSession, handleScriptWsMessage, setAgentConnectionStatus])
+  }, [projectId, addAgentMessage, setAgentSession, handleScriptWsMessage, setAgentConnectionStatus, setAgentRunning, finishStreaming])
 
   // 组件卸载时断开 WebSocket
   useEffect(() => {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Character } from '@/types/character'
 import * as charactersApi from '@/lib/api/characters'
+import { useAgentStore } from '@/stores/agent-store'
 import {
   ChevronDown,
   ChevronRight,
@@ -50,7 +51,8 @@ export function CharacterPanel({ projectId, characters: initialCharacters, onRef
   const [expanded, setExpanded] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
+  // 从 agent store 读取当前 Tab 的运行状态，替代本地 isRunning state
+  const isRunning = useAgentStore((s) => s.sessions[s.activeTab]?.isRunning ?? false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // 表单状态
@@ -170,11 +172,11 @@ export function CharacterPanel({ projectId, characters: initialCharacters, onRef
         <div className="flex gap-3">
           <button
             onClick={handleAIGenerate}
-            disabled={isGenerating}
+            disabled={isRunning}
             className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             <Wand2 className="h-4 w-4" />
-            {isGenerating ? '生成中...' : 'AI 生成角色'}
+            {isRunning ? '生成中...' : 'AI 生成角色'}
           </button>
           <button
             onClick={() => setShowCreateForm(true)}
@@ -199,11 +201,11 @@ export function CharacterPanel({ projectId, characters: initialCharacters, onRef
         <div className="flex gap-2">
           <button
             onClick={handleAIGenerate}
-            disabled={isGenerating}
+            disabled={isRunning}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             <Wand2 className="h-3.5 w-3.5" />
-            {isGenerating ? '生成中...' : 'AI 生成'}
+            {isRunning ? '生成中...' : 'AI 生成'}
           </button>
           <button
             onClick={() => setShowCreateForm(true)}

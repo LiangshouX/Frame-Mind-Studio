@@ -5,6 +5,7 @@ import { Loader2, Save, Sparkles, FileText, AlertTriangle, Zap, Heart, ChevronDo
 import { SynopsisContent } from '@/types/workflow'
 import * as workflowApi from '@/lib/api/workflow'
 import { useToast } from '@/components/shared/toast/toast-context'
+import { useAgentStore } from '@/stores/agent-store'
 
 interface SynopsisPanelProps {
   projectId: string
@@ -24,7 +25,8 @@ export function SynopsisPanel({ projectId, onGenerate, onSkip }: SynopsisPanelPr
   const [content, setContent] = useState<SynopsisContent>(DEFAULT_CONTENT)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  // 从 agent store 读取当前 Tab 的运行状态，替代本地 generating state
+  const isRunning = useAgentStore((s) => s.sessions[s.activeTab]?.isRunning ?? false)
   const [showGuide, setShowGuide] = useState(false)
   const { showToast } = useToast()
 
@@ -97,10 +99,10 @@ export function SynopsisPanel({ projectId, onGenerate, onSkip }: SynopsisPanelPr
           )}
           <button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={isRunning}
             className="btn btn-outline flex items-center gap-2"
           >
-            {generating ? (
+            {isRunning ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Sparkles className="h-4 w-4" />

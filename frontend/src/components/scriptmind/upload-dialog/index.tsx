@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { X, Upload, FileText, Loader2 } from 'lucide-react'
 import { apiUpload } from '@/lib/api/client'
 
@@ -14,6 +14,7 @@ interface UploadDialogProps {
 /**
  * 上传已有内容的对话框。
  * 支持 .txt, .docx, .md, .fountain 格式。
+ * 支持 Escape 键关闭、遮罩层点击关闭、焦点陷阱。
  */
 export function UploadDialog({ projectId, open, onClose, onUploaded }: UploadDialogProps) {
   const [file, setFile] = useState<File | null>(null)
@@ -21,6 +22,55 @@ export function UploadDialog({ projectId, open, onClose, onUploaded }: UploadDia
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  const handleClose = () => {
+    setFile(null)
+    setResult(null)
+    setError(null)
+    onClose()
+  }
+
+  // Escape 键关闭对话框
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleClose()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // 焦点陷阱：Tab 键循环限制在对话框内
+  useEffect(() => {
+    if (!open || !dialogRef.current) return
+    const dialog = dialogRef.current
+    const getFocusable = () =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      ))
+    // 打开时自动聚焦第一个可交互元素
+    const focusable = getFocusable()
+    focusable[0]?.focus()
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const items = getFocusable()
+      if (items.length === 0) return
+      const first = items[0], last = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault(); last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault(); first.focus()
+      }
+    }
+    dialog.addEventListener('keydown', handleTab)
+    return () => dialog.removeEventListener('keydown', handleTab)
+  }, [open])
 
   if (!open) return null
 
@@ -52,16 +102,18 @@ export function UploadDialog({ projectId, open, onClose, onUploaded }: UploadDia
     }
   }
 
-  const handleClose = () => {
-    setFile(null)
-    setResult(null)
-    setError(null)
-    onClose()
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-[var(--bg-card)] rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        className="bg-[var(--bg-card)] rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
           <h2 className="text-lg font-bold text-[var(--text-primary)]">上传已有内容</h2>
