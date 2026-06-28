@@ -31,19 +31,6 @@ spring:
     default-property-inclusion: non_null
     property-naming-strategy: SNAKE_CASE
 
-# AgentScope configuration
-agentscope:
-  model:
-    provider: ${AI_PROVIDER:openai}
-  openai:
-    api-key: ${OPENAI_API_KEY:}
-    model-name: ${OPENAI_MODEL:gpt-4o}
-    stream: true
-  dashscope:
-    api-key: ${DASHSCOPE_API_KEY:}
-    model-name: ${DASHSCOPE_MODEL:qwen-max}
-    stream: true
-
 # FrameMind custom config
 framemind:
   config:
@@ -53,6 +40,16 @@ framemind:
   budget:
     default-token-limit: 1000000
     warning-threshold: 0.80
+  # OpenClaw 引擎配置（Webhook 模式）
+  openclaw:
+    gateway-url: ${OPENCLAW_GATEWAY_URL:http://47.108.28.113:13015}
+    webhook-route-id: ${OPENCLAW_WEBHOOK_ROUTE_ID:platform}
+    webhook-secret: ${OPENCLAW_WEBHOOK_SECRET:framemind}
+    enabled: ${OPENCLAW_ENABLED:true}
+    request-timeout-ms: ${OPENCLAW_REQUEST_TIMEOUT_MS:120000}
+    connect-timeout-ms: ${OPENCLAW_CONNECT_TIMEOUT_MS:10000}
+    poll-interval-ms: ${OPENCLAW_POLL_INTERVAL_MS:2000}
+    max-poll-retries: ${OPENCLAW_MAX_POLL_RETRIES:120}
 
 # Actuator / Prometheus metrics
 management:
@@ -70,4 +67,3 @@ management:
 logging:
   level:
     io.framemind: DEBUG
-    io.agentscope: INFO

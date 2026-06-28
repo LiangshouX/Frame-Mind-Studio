@@ -9,7 +9,7 @@ import java.util.Optional;
  * Agent 定义注册中心接口。
  * <p>
  * 各业务模块通过 {@code @Bean} 实现此接口，注册自己模块的 Agent 定义。
- * {@code AgentScopeConfig} 收集所有实现并合并为统一映射。
+ * {@code PipelineOrchestrator} 通过注入所有实现并合并为统一映射。
  */
 public interface AgentDefinitionRegistry {
 

@@ -1,30 +1,28 @@
 package io.framemind.core.service;
 
-import io.agentscope.core.model.DashScopeChatModel;
-import io.agentscope.core.model.Model;
-import io.agentscope.core.model.OpenAIChatModel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * 模型路由服务，集中管理模型解析和构建。
+ * 模型配置服务，集中管理模型选择与配置解析。
  * <p>
  * 读取用户配置（{@link ConfigFileStore}）和目录元数据（{@link ModelCatalogService}），
- * 提供可用模型列表查询和 AgentScope {@link Model} 实例构建。
+ * 提供可用模型列表查询和模型配置解析（供传递给 OpenClaw）。
+ * <p>
+ * 重构自原 ModelRouterService：不再构建 AgentScope Model 实例，
+ * 改为返回模型配置信息供 Java 传递给 OpenClaw 引擎。
  */
 @Slf4j
 @Service
-public class ModelRouterService {
+public class ModelConfigService {
 
     private final ConfigFileStore configStore;
     private final ModelCatalogService catalogService;
 
-    public ModelRouterService(ConfigFileStore configStore, ModelCatalogService catalogService) {
+    public ModelConfigService(ConfigFileStore configStore, ModelCatalogService catalogService) {
         this.configStore = configStore;
         this.catalogService = catalogService;
     }
@@ -45,7 +43,6 @@ public class ModelRouterService {
                     && !userConfig.getApiKey().isBlank();
 
             List<ModelInfo> models = new ArrayList<>();
-            // 使用用户配置的模型列表，如果没有则使用目录默认列表
             List<String> modelNames = (userConfig != null && userConfig.getModels() != null
                     && !userConfig.getModels().isEmpty())
                     ? userConfig.getModels()
@@ -80,24 +77,39 @@ public class ModelRouterService {
     }
 
     /**
-     * 构建 AgentScope Model 实例。
+     * 解析模型配置（不构建 SDK 实例，仅返回配置信息供传递给 OpenClaw）。
+     * <p>
+     * 优先级：请求指定 > 默认模型选择。
+     * 如果没有任何可用模型配置，返回 null（OpenClaw 将使用自身默认配置）。
      *
-     * @param providerId 供应商 ID（如 "deepseek"、"dashscope"、"mimo"）
-     * @param modelName  模型名称（如 "deepseek-chat"、"qwen-max"）
-     * @return 构建好的 Model 实例
-     * @throws IllegalArgumentException 如果供应商未配置或 API Key 缺失
+     * @param providerId 请求指定的供应商 ID（可选）
+     * @param modelName  请求指定的模型名称（可选）
+     * @return 模型配置信息，或 null
      */
-    public Model buildModel(String providerId, String modelName) {
+    public ModelConfig resolveModelConfig(String providerId, String modelName) {
+        // 如果请求未指定，使用默认模型
+        if (providerId == null || providerId.isBlank()) {
+            ModelSelection defaultSelection = getDefaultModelSelection();
+            if (defaultSelection == null) {
+                log.debug("无可用模型配置，OpenClaw 将使用自身默认配置");
+                return null;
+            }
+            providerId = defaultSelection.providerId();
+            modelName = defaultSelection.modelName();
+        }
+
         // 获取目录元数据
         ModelCatalogService.ProviderCatalogEntry catalog = catalogService.getProvider(providerId);
         if (catalog == null) {
-            throw new IllegalArgumentException("未知的模型供应商: " + providerId);
+            log.warn("未知的模型供应商: {}，OpenClaw 将使用自身默认配置", providerId);
+            return null;
         }
 
         // 获取用户配置
         ConfigFileStore.ProviderEntry userConfig = configStore.getProvider(providerId);
         if (userConfig == null || userConfig.getApiKey() == null || userConfig.getApiKey().isBlank()) {
-            throw new IllegalArgumentException("供应商 '" + providerId + "' 未配置 API Key，请在设置页面配置");
+            log.warn("供应商 '{}' 未配置 API Key，OpenClaw 将使用自身默认配置", providerId);
+            return null;
         }
 
         String apiKey = userConfig.getApiKey();
@@ -105,28 +117,7 @@ public class ModelRouterService {
                 ? userConfig.getBaseUrl()
                 : catalog.getDefaultBaseUrl();
 
-        log.info("构建 Model: provider={}, model={}, baseUrl={}", providerId, modelName, baseUrl);
-
-        return switch (catalog.getType()) {
-            case "DASHSCOPE" -> DashScopeChatModel.builder()
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .baseUrl(baseUrl)
-                    .stream(true)
-                    .build();
-            case "OPENAI_COMPATIBLE" -> OpenAIChatModel.builder()
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .baseUrl(baseUrl)
-                    .stream(true)
-                    .build();
-            default -> OpenAIChatModel.builder()
-                    .apiKey(apiKey)
-                    .modelName(modelName)
-                    .baseUrl(baseUrl)
-                    .stream(true)
-                    .build();
-        };
+        return new ModelConfig(providerId, modelName, apiKey, baseUrl, catalog.getType());
     }
 
     /**
@@ -146,17 +137,22 @@ public class ModelRouterService {
             return new ConnectivityTestResult(false, "未配置 API Key");
         }
 
-        try {
-            // 尝试构建 Model 实例来验证配置
-            String modelName = catalog.getAvailableModels().isEmpty() ? "default" : catalog.getAvailableModels().get(0);
-            buildModel(providerId, modelName);
-            return new ConnectivityTestResult(true, "连接成功");
-        } catch (Exception e) {
-            return new ConnectivityTestResult(false, "连接失败: " + e.getMessage());
-        }
+        // 配置完整即认为可连通（实际连通性由 OpenClaw 调用时验证）
+        return new ConnectivityTestResult(true, "配置完整");
     }
 
     // ─── 数据类 ────────────────────────────────────────────────
+
+    /**
+     * 模型配置信息（供传递给 OpenClaw）。
+     */
+    public record ModelConfig(
+            String providerId,
+            String modelName,
+            String apiKey,
+            String baseUrl,
+            String providerType
+    ) {}
 
     /**
      * 供应商及其可用模型。

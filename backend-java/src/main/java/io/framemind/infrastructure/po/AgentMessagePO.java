@@ -60,6 +60,10 @@ public class AgentMessagePO {
     @Column(name = "metadata", columnDefinition = "jsonb")
     private JsonNode metadata;
 
+    /** OpenClaw 任务 ID（V7 迁移新增） */
+    @Column(name = "task_id", columnDefinition = "varchar(100)")
+    private String taskId;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

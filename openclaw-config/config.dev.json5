@@ -1,0 +1,22 @@
+// OpenClaw Gateway 开发环境配置
+// Webhook secret 使用明文（仅开发环境）
+{
+  plugins: {
+    entries: {
+      webhooks: {
+        enabled: true,
+        config: {
+          routes: {
+            platform: {
+              path: "/plugins/webhooks/platform",
+              sessionKey: "agent:main:main",
+              secret: "dev-secret",
+              controllerId: "webhooks/platform",
+              description: "FrameMind 影视平台 TaskFlow 桥接（开发环境）"
+            }
+          }
+        }
+      }
+    }
+  }
+}

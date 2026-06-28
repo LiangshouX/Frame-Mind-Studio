@@ -1,0 +1,7 @@
+{
+  "name": "character-analysis",
+  "description": "分析角色性格、关系和发展弧线",
+  "version": "1.0.0",
+  "type": "prompt",
+  "tags": ["character", "analysis", "framemind"]
+}

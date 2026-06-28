@@ -184,7 +184,7 @@ public class StreamingHook {
     }
 
     /**
-     * 直接发送原始 JSON 消息（用于 AgentEventBridge）。
+     * 直接发送原始 JSON 消息（用于 SyncEventProcessor）。
      */
     public void sendRawMessage(String sessionId, String json) {
         webSocketHandler.sendMessageToSession(sessionId, json);

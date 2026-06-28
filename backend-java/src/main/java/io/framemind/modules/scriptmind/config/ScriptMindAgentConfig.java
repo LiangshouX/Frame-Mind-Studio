@@ -2,28 +2,22 @@ package io.framemind.modules.scriptmind.config;
 
 import io.framemind.agent.config.AgentDefinition;
 import io.framemind.agent.registry.AgentDefinitionRegistry;
-import io.framemind.agent.registry.AgentToolRegistry;
 import io.framemind.agent.registry.WorkflowStepDefinition;
-import io.framemind.modules.scriptmind.tool.CharacterTool;
-import io.framemind.modules.scriptmind.tool.OutlineTool;
-import io.framemind.modules.scriptmind.tool.ScriptTool;
-import io.framemind.modules.scriptmind.tool.SynopsisTool;
-import io.framemind.agent.tool.WebSearchTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * ScriptMind 模块的 Agent 配置类。
  * <p>
- * 注册本模块的 Agent 定义、Tool 映射和 Workflow Step 定义。
- * 实现 {@link AgentDefinitionRegistry} 和 {@link AgentToolRegistry} 接口，
- * 由框架层的 {@link io.framemind.agent.config.AgentScopeConfig} 和
- * {@link io.framemind.agent.core.AgentScopeAgentFactory} 自动收集。
+ * 注册本模块的 Agent 定义和 Workflow Step 定义。
+ * Agent 定义通过 {@link AgentDefinitionRegistry} 注册，
+ * 由 {@link io.framemind.agent.orchestration.PipelineOrchestrator} 使用。
+ * <p>
+ * 工具（Skills）由 OpenClaw Python 插件侧管理，不再在 Java 侧注册。
  */
 @Slf4j
 @Configuration
@@ -32,7 +26,7 @@ public class ScriptMindAgentConfig {
     // ─── Agent 定义注册 ────────────────────────────────────────────
 
     /**
-     * 注册 ScriptMind 模块的 5 个 Agent 定义。
+     * 注册 ScriptMind 模块的 5 个 Agent 定义（适配 OpenClaw 格式）。
      */
     @Bean
     public AgentDefinitionRegistry scriptmindAgentDefinitionRegistry() {
@@ -50,13 +44,16 @@ public class ScriptMindAgentConfig {
 
                         ## 工具使用
                         - 使用 web_search 搜索市场趋势和竞品分析
+                        - 使用 fetch_context 加载项目上下文
 
                         ## 输出要求
                         - 结构化、有条理
                         - 包含具体可执行的建议
                         - 关注市场差异化
                         """,
-                        10
+                        "worldview",
+                        List.of("web_search", "fetch_context"),
+                        Map.of("max_iterations", 10)
                 )),
                 Map.entry("synopsis_agent", new AgentDefinition(
                         "synopsis_agent",
@@ -70,7 +67,7 @@ public class ScriptMindAgentConfig {
                         4. 支持用户交互式修改和优化
 
                         ## 工具使用
-                        - 使用 load_worldview_context 加载世界观上下文
+                        - 使用 fetch_context 加载世界观上下文
                         - 使用 save_synopsis 保存最终梗概
 
                         ## 输出要求
@@ -78,7 +75,9 @@ public class ScriptMindAgentConfig {
                         - 情感曲线清晰
                         - 与世界观设定紧密关联
                         """,
-                        8
+                        "synopsis",
+                        List.of("fetch_context", "save_synopsis"),
+                        Map.of("max_iterations", 8)
                 )),
                 Map.entry("character_agent", new AgentDefinition(
                         "character_agent",
@@ -102,7 +101,9 @@ public class ScriptMindAgentConfig {
                         - 人设有记忆点
                         - 关系网络有张力
                         """,
-                        10
+                        "characters",
+                        List.of("create_character", "batch_create_characters", "update_character", "delete_character"),
+                        Map.of("max_iterations", 10)
                 )),
                 Map.entry("outline_agent", new AgentDefinition(
                         "outline_agent",
@@ -116,8 +117,7 @@ public class ScriptMindAgentConfig {
                         4. 漫画格式：回复"暂不支持"
 
                         ## 工具使用
-                        - 使用 load_synopsis_context 加载梗概上下文
-                        - 使用 load_characters_context 加载角色上下文
+                        - 使用 fetch_context 加载梗概和角色上下文
                         - 使用 save_outline 保存大纲
 
                         ## 输出要求
@@ -125,7 +125,9 @@ public class ScriptMindAgentConfig {
                         - 节奏设计合理
                         - 每集/每幕有明确的冲突和推进
                         """,
-                        10
+                        "outline",
+                        List.of("fetch_context", "save_outline"),
+                        Map.of("max_iterations", 10)
                 )),
                 Map.entry("script_agent", new AgentDefinition(
                         "script_agent",
@@ -139,7 +141,7 @@ public class ScriptMindAgentConfig {
                         4. 优化对白质量和场景转换
 
                         ## 工具使用
-                        - 使用 load_outline_context 加载大纲结构
+                        - 使用 fetch_context 加载大纲结构
                         - 使用 save_scene_content 保存场景内容
                         - 使用 check_consistency 检查一致性
 
@@ -149,7 +151,9 @@ public class ScriptMindAgentConfig {
                         - 场景描写生动
                         - 前后一致，无矛盾
                         """,
-                        15
+                        "script",
+                        List.of("fetch_context", "save_scene_content", "check_consistency"),
+                        Map.of("max_iterations", 15)
                 ))
         );
 
@@ -157,38 +161,6 @@ public class ScriptMindAgentConfig {
             @Override
             public Map<String, AgentDefinition> getAllDefinitions() {
                 return definitions;
-            }
-        };
-    }
-
-    // ─── Tool 注册 ────────────────────────────────────────────────
-
-    /**
-     * 注册 ScriptMind 模块的 agent → Tool 映射。
-     */
-    @Bean
-    public AgentToolRegistry scriptmindToolRegistry(WebSearchTool webSearchTool,
-                                                     CharacterTool characterTool,
-                                                     SynopsisTool synopsisTool,
-                                                     OutlineTool outlineTool,
-                                                     ScriptTool scriptTool) {
-        Map<String, List<Object>> toolMap = Map.of(
-                "creative_agent", List.of(webSearchTool),
-                "synopsis_agent", List.of(synopsisTool),
-                "character_agent", List.of(characterTool),
-                "outline_agent", List.of(outlineTool),
-                "script_agent", List.of(scriptTool)
-        );
-
-        return new AgentToolRegistry() {
-            @Override
-            public List<Object> getToolsForAgent(String agentName) {
-                return toolMap.getOrDefault(agentName, List.of());
-            }
-
-            @Override
-            public Set<String> getRegisteredAgentNames() {
-                return toolMap.keySet();
             }
         };
     }

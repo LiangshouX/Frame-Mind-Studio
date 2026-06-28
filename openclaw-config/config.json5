@@ -1,0 +1,27 @@
+// OpenClaw Gateway 生产环境配置
+// 启用内置 Webhooks 插件，供 Java 平台通过 HTTP 调用
+{
+  plugins: {
+    entries: {
+      webhooks: {
+        enabled: true,
+        config: {
+          routes: {
+            // 路由 ID "platform" 对应 Java 端 webhook-route-id 配置
+            platform: {
+              path: "/plugins/webhooks/platform",
+              sessionKey: "agent:main:main",
+              secret: {
+                source: "env",
+                provider: "default",
+                id: "OPENCLAW_WEBHOOK_SECRET"
+              },
+              controllerId: "webhooks/platform",
+              description: "FrameMind 影视平台 TaskFlow 桥接"
+            }
+          }
+        }
+      }
+    }
+  }
+}

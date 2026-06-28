@@ -2,20 +2,21 @@ package io.framemind.agent.orchestration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.agentscope.core.ReActAgent;
-import io.agentscope.core.agent.RuntimeContext;
-import io.agentscope.core.message.Msg;
-import io.agentscope.core.message.MsgRole;
-import io.agentscope.core.message.TextBlock;
+import io.framemind.agent.client.OpenClawTaskClient;
+import io.framemind.agent.client.OpenClawTaskRequest;
+import io.framemind.agent.client.OpenClawTaskResponse;
 import io.framemind.agent.config.AgentDefinition;
-import io.framemind.agent.core.AgentEventBridge;
-import io.framemind.agent.core.AgentScopeAgentFactory;
 import io.framemind.agent.hook.BudgetHook;
 import io.framemind.agent.hook.StreamingHook;
 import io.framemind.agent.registry.WorkflowStepDefinition;
+import io.framemind.core.service.ModelConfigService;
+import io.framemind.infrastructure.po.AgentMessagePO;
 import io.framemind.infrastructure.po.AgentSessionPO;
+import io.framemind.infrastructure.po.OpenClawTaskPO;
 import io.framemind.infrastructure.po.ProjectPO;
+import io.framemind.infrastructure.repository.AgentMessageRepository;
 import io.framemind.infrastructure.repository.AgentSessionRepository;
+import io.framemind.infrastructure.repository.OpenClawTaskRepository;
 import io.framemind.infrastructure.repository.ProjectRepository;
 import io.framemind.modules.scriptmind.service.AgentSessionService;
 import lombok.RequiredArgsConstructor;
@@ -25,15 +26,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
  * 通用工作流编排器。
  * <p>
- * 负责按 workflowStep 将用户消息分发给对应的 Agent，并通过 WebSocket 流式推送结果。
+ * 负责按 workflowStep 将用户消息分发给对应的 OpenClaw Agent，
+ * 通过 OpenClaw Webhooks 插件发起任务，并通过 WebSocket 流式推送结果。
+ * <p>
+ * 通信流程：Java → OpenClaw Webhook (create_flow → run_task → poll → finish_flow)
  * <p>
  * workflowStep → agent 的映射通过 {@link WorkflowStepDefinition} 注册表获取，
  * 由各业务模块自行注册（如 ScriptMind 的 worldview→creative_agent 等）。
@@ -45,17 +50,20 @@ public class PipelineOrchestrator {
 
     private final Map<String, AgentDefinition> agentDefinitions;
     private final Map<String, WorkflowStepDefinition> workflowStepDefinitions;
-    private final AgentScopeAgentFactory agentFactory;
-    private final AgentEventBridge eventBridge;
+    private final OpenClawTaskClient openClawClient;
+    private final AgentMessageHistoryBuilder historyBuilder;
+    private final ModelConfigService modelConfigService;
     private final StreamingHook streamingHook;
     private final BudgetHook budgetHook;
     private final AgentSessionRepository sessionRepository;
+    private final AgentMessageRepository messageRepository;
     private final ProjectRepository projectRepository;
+    private final OpenClawTaskRepository openClawTaskRepository;
     private final AgentSessionService agentSessionService;
     private final ObjectMapper objectMapper;
 
     /**
-     * 分发消息到对应 Agent 并流式推送结果。
+     * 分发消息到对应 OpenClaw Agent（通过 Webhooks 插件）并推送结果到 WebSocket。
      *
      * @param projectId     项目 ID
      * @param workflowStep  工作流步骤
@@ -78,7 +86,7 @@ public class PipelineOrchestrator {
         }
         String agentName = stepDef.agentName();
 
-        log.info("分发到 Agent: projectId={}, step={}, agent={}, provider={}, model={}, sessionId={}",
+        log.info("分发到 OpenClaw Agent: projectId={}, step={}, agent={}, provider={}, model={}, sessionId={}",
                 projectId, workflowStep, agentName, providerId, modelName, sessionId);
 
         // 查找指定会话或创建新会话
@@ -104,43 +112,121 @@ public class PipelineOrchestrator {
                 throw new IllegalStateException("未找到 Agent 定义: " + agentName);
             }
 
-            // 构建 Agent（使用用户选择的模型）
-            ReActAgent agent = agentFactory.buildAgent(projectId, agentName, definition, providerId, modelName);
+            // 解析模型配置（传递给 OpenClaw）
+            ModelConfigService.ModelConfig modelConfig =
+                    modelConfigService.resolveModelConfig(providerId, modelName);
 
-            // 构建用户消息
-            Msg userMsg = Msg.builder()
-                    .name("user")
-                    .role(MsgRole.USER)
-                    .content(TextBlock.builder().text(userMessage).build())
-                    .build();
+            // 构建对话历史
+            List<OpenClawTaskRequest.ChatMessage> history =
+                    historyBuilder.buildHistory(session.getId(), 20);
 
-            // 创建 RuntimeContext，传入 sessionId 以便状态持久化
-            RuntimeContext runtimeContext = RuntimeContext.builder()
-                    .sessionId(actualSessionId)
-                    .build();
+            // 构建 OpenClaw 请求参数
+            String taskId = UUID.randomUUID().toString();
+            Map<String, Object> parameters = new LinkedHashMap<>();
+            parameters.put("project_id", projectId.toString());
+            parameters.put("agent_name", agentName);
+            parameters.put("system_prompt", definition.systemPrompt());
+            parameters.put("task_type", definition.taskType());
+            if (definition.skills() != null && !definition.skills().isEmpty()) {
+                parameters.put("skills", definition.skills());
+            }
+            if (definition.agentParams() != null) {
+                parameters.putAll(definition.agentParams());
+            }
 
-            // 调用 Agent 并桥接事件流
-            eventBridge.bridge(actualSessionId, agentName, agent.streamEvents(userMsg, runtimeContext), tokensConsumed -> {
-                // 完成回调
-                budgetHook.consumeTokens(projectId, tokensConsumed, actualSessionId);
-                session.setStatus("completed");
-                session.setCompletedAt(LocalDateTime.now());
-                session.setTokensConsumed(tokensConsumed);
-                sessionRepository.save(session);
+            // 传递模型配置（可选，未配置时 OpenClaw 使用自身默认）
+            if (modelConfig != null) {
+                parameters.put("model_provider", modelConfig.providerId());
+                parameters.put("model_name", modelConfig.modelName());
+                parameters.put("api_key", modelConfig.apiKey());
+                parameters.put("base_url", modelConfig.baseUrl());
+                parameters.put("provider_type", modelConfig.providerType());
+            }
 
-                // 自动生成会话标题
+            // 构建任务请求
+            OpenClawTaskRequest request = new OpenClawTaskRequest(
+                    actualSessionId,
+                    taskId,
+                    definition.taskType(),
+                    userMessage,
+                    parameters,
+                    history
+            );
+
+            // 记录任务到 openclaw_tasks 表
+            OpenClawTaskPO taskPO = new OpenClawTaskPO();
+            taskPO.setSession(session);
+            taskPO.setTaskId(taskId);
+            taskPO.setTaskType(definition.taskType());
+            taskPO.setAgentName(agentName);
+            taskPO.setStatus("running");
+            taskPO.setStartedAt(LocalDateTime.now());
+            try {
+                taskPO.setRequestPayload(objectMapper.valueToTree(request));
+            } catch (Exception e) {
+                log.debug("序列化请求载荷失败", e);
+            }
+            openClawTaskRepository.save(taskPO);
+
+            // 调用 OpenClaw Webhook（同步等待最终结果）
+            OpenClawTaskResponse response = openClawClient.submitTask(request);
+
+            // 提取助手回复文本
+            String assistantContent = extractAssistantContent(response);
+
+            // 推送流式输出到 WebSocket
+            if (assistantContent != null && !assistantContent.isBlank()) {
+                streamingHook.onStreamChunk(actualSessionId, agentName, assistantContent);
+
+                // 持久化助手消息
+                persistAssistantMessage(session, taskId, agentName, assistantContent);
+            }
+
+            // 推送完成事件到 WebSocket
+            int totalTokens = response.tokenUsage() != null ? response.tokenUsage().totalTokens() : 0;
+            streamingHook.onComplete(actualSessionId, response.result(), totalTokens);
+
+            // 处理完成响应
+            session.setStatus("completed");
+            session.setCompletedAt(LocalDateTime.now());
+
+            // Token 消耗
+            if (totalTokens > 0) {
+                session.setTokensConsumed(totalTokens);
                 try {
-                    agentSessionService.generateTitle(UUID.fromString(actualSessionId));
+                    budgetHook.consumeTokens(projectId, totalTokens, actualSessionId);
                 } catch (Exception e) {
-                    log.warn("自动生成标题失败: sessionId={}", actualSessionId, e);
+                    log.warn("预算扣减失败: sessionId={}", actualSessionId, e);
                 }
-            });
+            }
+            sessionRepository.save(session);
+
+            // 更新任务记录
+            taskPO.setStatus("completed");
+            taskPO.setCompletedAt(LocalDateTime.now());
+            if (response.result() != null) {
+                taskPO.setResponsePayload(response.result());
+            }
+            if (response.tokenUsage() != null) {
+                taskPO.setTokenUsage(objectMapper.valueToTree(response.tokenUsage()));
+            }
+            if (response.usedSkills() != null) {
+                taskPO.setUsedSkills(objectMapper.valueToTree(response.usedSkills()));
+            }
+            openClawTaskRepository.save(taskPO);
+
+            // 自动生成会话标题
+            try {
+                agentSessionService.generateTitle(UUID.fromString(actualSessionId));
+            } catch (Exception e) {
+                log.warn("自动生成标题失败: sessionId={}", actualSessionId, e);
+            }
 
             return CompletableFuture.completedFuture(actualSessionId);
 
         } catch (Exception e) {
-            log.error("Agent 调用失败: session={}, step={}", session.getId(), workflowStep, e);
-            streamingHook.onError(session.getId().toString(), "AGENT_ERROR", e.getMessage());
+            log.error("OpenClaw Agent 调用失败: session={}, step={}", session.getId(), workflowStep, e);
+            streamingHook.onError(session.getId().toString(), "OPENCLAW_ERROR", e.getMessage());
             session.setStatus("failed");
             session.setCompletedAt(LocalDateTime.now());
             sessionRepository.save(session);
@@ -185,5 +271,65 @@ public class PipelineOrchestrator {
         inputData.put("agent_name", agentName);
 
         return agentSessionService.createSession(project, "chat", workflowStep, agentName, inputData);
+    }
+
+    // ─── 结果处理 ────────────────────────────────────────────────
+
+    /**
+     * 从 OpenClaw 响应中提取助手回复文本。
+     */
+    private String extractAssistantContent(OpenClawTaskResponse response) {
+        if (response.result() == null) return null;
+
+        var result = response.result();
+
+        // 纯文本
+        if (result.isTextual()) return result.asText();
+
+        // result.output
+        if (result.has("output")) {
+            var output = result.get("output");
+            return output.isTextual() ? output.asText() : output.toString();
+        }
+
+        // result.content
+        if (result.has("content")) {
+            var content = result.get("content");
+            return content.isTextual() ? content.asText() : content.toString();
+        }
+
+        // result.text
+        if (result.has("text")) {
+            var text = result.get("text");
+            return text.isTextual() ? text.asText() : text.toString();
+        }
+
+        // 兜底：整个 JSON 序列化
+        return result.toString();
+    }
+
+    /**
+     * 持久化助手消息到 agent_messages 表。
+     */
+    private void persistAssistantMessage(AgentSessionPO session, String taskId,
+                                          String agentName, String content) {
+        try {
+            AgentMessagePO message = new AgentMessagePO();
+            message.setSession(session);
+            message.setRole("assistant");
+            message.setContent(content);
+            message.setMessageType("text");
+            message.setAgentName(agentName);
+            message.setTaskId(taskId);
+
+            int maxOrder = messageRepository
+                    .findMaxMessageOrderBySessionId(session.getId())
+                    .orElse(-1);
+            message.setMessageOrder(maxOrder + 1);
+
+            messageRepository.save(message);
+        } catch (Exception e) {
+            log.warn("持久化助手消息失败: sessionId={}", session.getId(), e);
+        }
     }
 }

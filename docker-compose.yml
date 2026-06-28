@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -50,6 +48,10 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       AI_PROVIDER: ${AI_PROVIDER:-openai}
       FERNET_KEY: ${FERNET_KEY:-}
+      OPENCLAW_GATEWAY_URL: http://openclaw:8080
+      OPENCLAW_WEBHOOK_ROUTE_ID: platform
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-changeme}
+      OPENCLAW_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,6 +70,21 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8080
     depends_on:
       - backend
+
+  openclaw:
+    image: openclaw/openclaw:latest
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./openclaw-config/config.json5:/etc/openclaw/config.json5:ro
+      - ./data/openclaw:/var/lib/openclaw
+    environment:
+      OPENCLAW_WEBHOOK_SECRET: ${OPENCLAW_WEBHOOK_SECRET:-changeme}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    depends_on:
+      - backend
+    restart: unless-stopped
 
   # ─── 可观测性栈 ───
   alloy:
